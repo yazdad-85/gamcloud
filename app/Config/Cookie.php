@@ -56,6 +56,15 @@ class Cookie extends BaseConfig
      */
     public bool $secure = false;
 
+    public function __construct()
+    {
+        parent::__construct();
+        $secure = env('cookie.secure');
+        if ($secure !== null && $secure !== '') {
+            $this->secure = filter_var($secure, FILTER_VALIDATE_BOOLEAN);
+        }
+    }
+
     /**
      * --------------------------------------------------------------------------
      * Cookie HTTPOnly

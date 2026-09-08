@@ -71,7 +71,8 @@ class Security extends BaseConfig
      *
      * Regenerate CSRF Token on every submission.
      */
-    public bool $regenerate = true;
+    // Keep false so teacher JSON control POSTs can reuse the layout meta token.
+    public bool $regenerate = false;
 
     /**
      * --------------------------------------------------------------------------

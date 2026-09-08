@@ -3,6 +3,7 @@
 namespace App\Services\Security;
 
 use App\Models\GameTeamModel;
+use Config\Game;
 use DomainException;
 
 class TeamSessionService
@@ -13,6 +14,13 @@ class TeamSessionService
 
         if (! is_array($session) || ($session['team_uuid'] ?? null) !== $teamUuid) {
             throw new DomainException('Session tim tidak valid. Silakan join ulang dengan PIN.');
+        }
+
+        $issuedAt = (int) ($session['issued_at'] ?? 0);
+        $ttlMinutes = (int) config(Game::class)->teamSessionTtlMinutes;
+        if ($issuedAt < 1 || (time() - $issuedAt) > ($ttlMinutes * 60)) {
+            session()->remove($this->sessionKey($roomUuid));
+            throw new DomainException('Session tim kedaluwarsa. Silakan join ulang dengan PIN.');
         }
 
         $team = (new GameTeamModel())->where('public_uuid', $teamUuid)->first();

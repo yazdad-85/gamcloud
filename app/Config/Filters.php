@@ -124,9 +124,11 @@ class Filters extends BaseFilters
                 'daftar-guru/*',
                 'teacher/*',
                 'superadmin/*',
-            ],
-            'except' => [
-                'api/*',
+                'api/v1/rooms/*/start',
+                'api/v1/rooms/*/pause',
+                'api/v1/rooms/*/resume',
+                'api/v1/rooms/*/skip-turn',
+                'api/v1/rooms/*/force-timeout',
             ],
         ],
         'rateLimit:20,60,auth-login' => [

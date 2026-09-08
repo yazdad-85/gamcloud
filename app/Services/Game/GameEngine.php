@@ -66,6 +66,7 @@ class GameEngine
         }
 
         $pin = $this->uniquePin();
+        $projectorToken = bin2hex(random_bytes(32));
         $now = date('Y-m-d H:i:s');
         $turnOrderMode = $this->validOption((string) ($options['turn_order_mode'] ?? 'random'), ['random', 'join_order'], 'random');
         $finishRule = $this->validOption((string) ($options['finish_rule'] ?? 'clamp_finish'), ['clamp_finish', 'exact_finish'], 'clamp_finish');
@@ -90,6 +91,8 @@ class GameEngine
             'teacher_id' => $teacherId,
             'board_template_id' => $board['id'],
             'pin' => $pin,
+            'projector_token' => $projectorToken,
+            'projector_token_hash' => hash('sha256', $projectorToken),
             'title' => $title,
             'status' => 'LOBBY',
             'state_version' => 1,
@@ -117,7 +120,7 @@ class GameEngine
             'mystery_tile_count' => $this->specialTileCount($board, 'MYSTERY'),
         ]);
 
-        return $this->snapshot($room['public_uuid']);
+        return $this->snapshot($room['public_uuid'], null, true);
     }
 
     public function joinByPin(string $pin, string $teamName, string $avatar = 'robot'): array
@@ -1026,15 +1029,16 @@ class GameEngine
         return $this->snapshot($room['public_uuid']);
     }
 
-    public function snapshot(string $roomUuid): array
+    public function snapshot(string $roomUuid, ?string $projectorToken = null, bool $forOwner = false): array
     {
         $room = $this->roomByUuid($roomUuid);
         $teams = array_map([$this, 'publicTeam'], $this->teams((int) $room['id']));
         $turn = $this->activeTurn((int) $room['id']);
         $board = (new BoardTemplateModel())->find($room['board_template_id']);
+        $includePin = $forOwner || $this->isValidProjectorToken($room, $projectorToken);
 
         return [
-            'room' => $this->publicRoom($room),
+            'room' => $this->publicRoom($room, $includePin, $forOwner),
             'question_bank' => $this->questionBankSummary(
                 (int) $room['teacher_id'],
                 $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position'])['topic_ids']
@@ -1053,6 +1057,20 @@ class GameEngine
             'leaderboard' => $this->leaderboard((int) $room['id']),
             'events' => $this->recentEvents((int) $room['id']),
         ];
+    }
+
+    public function isValidProjectorToken(array $room, ?string $projectorToken): bool
+    {
+        if ($projectorToken === null || $projectorToken === '') {
+            return false;
+        }
+
+        $hash = (string) ($room['projector_token_hash'] ?? '');
+        if ($hash === '') {
+            return false;
+        }
+
+        return hash_equals($hash, hash('sha256', $projectorToken));
     }
 
     public function deleteRoom(string $roomUuid): void
@@ -2081,11 +2099,10 @@ class GameEngine
         ];
     }
 
-    private function publicRoom(array $room): array
+    private function publicRoom(array $room, bool $includePin = false, bool $forOwner = false): array
     {
-        return [
+        $payload = [
             'uuid' => $room['public_uuid'],
-            'pin' => $room['pin'],
             'title' => $room['title'],
             'status' => $room['status'],
             'state_version' => (int) $room['state_version'],
@@ -2100,6 +2117,16 @@ class GameEngine
             'started_at' => $room['started_at'],
             'finished_at' => $room['finished_at'],
         ];
+
+        if ($includePin) {
+            $payload['pin'] = $room['pin'];
+        }
+
+        if ($forOwner) {
+            $payload['projector_token'] = (string) ($room['projector_token'] ?? '');
+        }
+
+        return $payload;
     }
 
     private function publicModeState(array $room, array $board, ?array $turn, array $teams): array

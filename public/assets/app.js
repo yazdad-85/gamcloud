@@ -1,14 +1,30 @@
 (function () {
+    function csrfHeaders() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (!meta || !meta.content) {
+            return {};
+        }
+
+        return {'X-CSRF-TOKEN': meta.content};
+    }
+
     function jsonFetch(url, options) {
         const method = (options && options.method) || 'GET';
         const idempotencyKey = method === 'POST' ? crypto.randomUUID() : undefined;
-
-        return fetch(url, Object.assign({
-            headers: Object.assign({
+        const extraHeaders = Object.assign(
+            {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
-            }, idempotencyKey ? {'Idempotency-Key': idempotencyKey} : {}),
-        }, options || {}))
+            },
+            idempotencyKey ? {'Idempotency-Key': idempotencyKey} : {},
+            method === 'POST' ? csrfHeaders() : {},
+            (options && options.headers) || {}
+        );
+
+        return fetch(url, Object.assign({}, options || {}, {
+            method,
+            headers: extraHeaders,
+        }))
             .then((response) => response.json().then((body) => ({response, body})))
             .then(({response, body}) => {
                 if (!response.ok || body.ok === false) {
@@ -497,7 +513,10 @@
         }
 
         function refresh() {
-            return jsonFetch('/api/v1/rooms/' + config.roomUuid + '/state')
+            const tokenQuery = config.projectorToken
+                ? ('?t=' + encodeURIComponent(config.projectorToken))
+                : '';
+            return jsonFetch('/api/v1/rooms/' + config.roomUuid + '/state' + tokenQuery)
                 .then((next) => {
                     if (!snapshot || next.room.state_version >= snapshot.room.state_version) {
                         snapshot = next;

@@ -14,7 +14,12 @@ class RoomsController extends BaseController
 {
     public function state(string $roomUuid)
     {
-        return $this->respond(fn () => (new GameEngine())->snapshot($roomUuid));
+        $token = trim((string) $this->request->getGet('t'));
+
+        return $this->respond(fn () => (new GameEngine())->snapshot(
+            $roomUuid,
+            $token !== '' ? $token : null
+        ));
     }
 
     public function start(string $roomUuid)

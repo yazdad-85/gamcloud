@@ -14,6 +14,8 @@ class GameRoomModel extends Model
         'teacher_id',
         'board_template_id',
         'pin',
+        'projector_token',
+        'projector_token_hash',
         'title',
         'status',
         'current_team_id',

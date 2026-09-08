@@ -19,6 +19,12 @@ class DemoForceFinishCommand extends BaseCommand
 
     public function run(array $params)
     {
+        if (ENVIRONMENT === 'production') {
+            CLI::error('Demo commands disabled in production.');
+
+            return EXIT_ERROR;
+        }
+
         $roomUuid = (string) ($params[0] ?? '');
         if ($roomUuid === '') {
             CLI::error('Usage: php spark demo:force-finish <roomUuid>');
@@ -102,7 +108,7 @@ class DemoForceFinishCommand extends BaseCommand
             CLI::write('No winner yet — check pending snake/ladder/mystery on finish tile.', 'yellow');
             CLI::write('Current turn state: ' . (($snapshot['current_turn']['state'] ?? null) ?: 'n/a'));
         }
-        CLI::write('Projector: http://127.0.0.1:8090/game/' . $roomUuid . '/projector');
+        CLI::write('Projector: http://127.0.0.1:8090/game/' . $roomUuid . '/projector?t=' . (string) ($room['projector_token'] ?? ''));
 
         return EXIT_SUCCESS;
     }

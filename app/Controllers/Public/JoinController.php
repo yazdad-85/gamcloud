@@ -35,6 +35,7 @@ class JoinController extends BaseController
             session()->set('team_' . $join['room']['public_uuid'], [
                 'team_uuid' => $join['team']['public_uuid'],
                 'token' => $join['token'],
+                'issued_at' => time(),
             ]);
 
             return redirect()->to('/game/' . $join['room']['public_uuid'] . '/controller?team=' . $join['team']['public_uuid']);

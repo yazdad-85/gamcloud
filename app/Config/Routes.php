@@ -7,7 +7,7 @@ $routes->get('/', 'Home::index');
 
 $routes->get('join', 'Public\JoinController::index', ['filter' => 'rateLimit:40,60,join-page']);
 $routes->get('join/(:segment)', 'Public\JoinController::index/$1', ['filter' => 'rateLimit:40,60,join-page']);
-$routes->post('join', 'Public\JoinController::join', ['filter' => 'rateLimit:15,60,join-submit']);
+$routes->post('join', 'Public\JoinController::join', ['filter' => 'rateLimit:8,60,join-submit']);
 
 $routes->get('daftar-guru', 'Public\TeacherRegistrationController::create', ['filter' => 'rateLimit:8,60,teacher-register']);
 $routes->post('daftar-guru', 'Public\TeacherRegistrationController::store', ['filter' => 'rateLimit:4,300,teacher-register-submit']);

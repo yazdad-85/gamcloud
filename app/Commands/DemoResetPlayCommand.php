@@ -16,6 +16,12 @@ class DemoResetPlayCommand extends BaseCommand
 
     public function run(array $params)
     {
+        if (ENVIRONMENT === 'production') {
+            CLI::error('Demo commands disabled in production.');
+
+            return EXIT_ERROR;
+        }
+
         $db = Database::connect();
         $db->table('game_rooms')
             ->whereIn('status', ['LOBBY', 'PLAYING', 'PAUSED'])
@@ -41,7 +47,8 @@ class DemoResetPlayCommand extends BaseCommand
         CLI::write('Teacher login: http://127.0.0.1:8090/login');
         CLI::write('  (gunakan kredensial dari .env SEED_TEACHER_PASSWORD — jangan hardcode)');
         CLI::write('Teacher room : http://127.0.0.1:8090/teacher/games/' . $room['uuid']);
-        CLI::write('Projector    : http://127.0.0.1:8090/game/' . $room['uuid'] . '/projector');
+        $token = (string) ($room['projector_token'] ?? '');
+        CLI::write('Projector    : http://127.0.0.1:8090/game/' . $room['uuid'] . '/projector?t=' . $token);
         CLI::write('Langkah: buka Join di 2 tab/device (TIM A & TIM B), lalu Start dari halaman guru.');
 
         return EXIT_SUCCESS;

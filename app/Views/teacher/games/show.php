@@ -29,7 +29,7 @@
     </div>
     <div class="inline-actions">
         <a class="button secondary" href="/join/<?= esc($room['pin']) ?>">Join</a>
-        <a class="button secondary" href="/game/<?= esc($room['uuid']) ?>/projector" target="_blank">Projector</a>
+        <a class="button secondary" href="/game/<?= esc($room['uuid']) ?>/projector?t=<?= esc((string) ($room['projector_token'] ?? '')) ?>" target="_blank">Projector</a>
         <a class="button secondary" href="/teacher/games/<?= esc($room['uuid']) ?>/report">Laporan</a>
         <a class="button" href="/teacher/games/<?= esc($room['uuid']) ?>/control">Control</a>
         <?php if (in_array($room['status'], ['LOBBY', 'FINISHED', 'EXPIRED'], true)): ?>
@@ -80,7 +80,7 @@
     <div class="panel">
         <h2>Link Cepat</h2>
         <p><a class="button secondary" href="/join/<?= esc($room['pin']) ?>">/join/<?= esc($room['pin']) ?></a></p>
-        <p><a class="button secondary" href="/game/<?= esc($room['uuid']) ?>/projector">Buka Projector</a></p>
+        <p><a class="button secondary" href="/game/<?= esc($room['uuid']) ?>/projector?t=<?= esc((string) ($room['projector_token'] ?? '')) ?>">Buka Projector</a></p>
     </div>
 </section>
 

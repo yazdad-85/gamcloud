@@ -159,6 +159,15 @@ class App extends BaseConfig
      */
     public bool $forceGlobalSecureRequests = false;
 
+    public function __construct()
+    {
+        parent::__construct();
+        $forced = env('app.forceGlobalSecureRequests');
+        if ($forced !== null && $forced !== '') {
+            $this->forceGlobalSecureRequests = filter_var($forced, FILTER_VALIDATE_BOOLEAN);
+        }
+    }
+
     /**
      * --------------------------------------------------------------------------
      * Reverse Proxy IPs

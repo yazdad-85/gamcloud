@@ -144,7 +144,7 @@ class GameController extends BaseController
         (new TenantContext())->assertRoomOwner($roomUuid);
 
         return view('teacher/games/show', [
-            'snapshot' => (new GameEngine())->snapshot($roomUuid),
+            'snapshot' => (new GameEngine())->snapshot($roomUuid, null, true),
         ]);
     }
 
@@ -153,7 +153,7 @@ class GameController extends BaseController
         (new TenantContext())->assertRoomOwner($roomUuid);
 
         return view('teacher/games/control', [
-            'snapshot' => (new GameEngine())->snapshot($roomUuid),
+            'snapshot' => (new GameEngine())->snapshot($roomUuid, null, true),
         ]);
     }
 
