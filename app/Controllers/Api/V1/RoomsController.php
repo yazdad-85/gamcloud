@@ -132,6 +132,24 @@ class RoomsController extends BaseController
         });
     }
 
+    public function answerBoardChallenge(string $roomUuid)
+    {
+        $payload = $this->request->getJSON(true) ?: $this->request->getPost();
+        $teamUuid = (string) ($payload['team_uuid'] ?? $this->request->getGet('team'));
+        $optionId = (int) ($payload['option_id'] ?? 0);
+
+        return $this->respond(function () use ($roomUuid, $teamUuid, $optionId, $payload): array {
+            (new TeamSessionService())->assertTeamSession($roomUuid, $teamUuid);
+
+            return (new GameEngine())->answerBoardChallenge(
+                $roomUuid,
+                $teamUuid,
+                $optionId,
+                $this->request->getHeaderLine('Idempotency-Key') ?: ($payload['idempotency_key'] ?? null)
+            );
+        });
+    }
+
     private function respond(callable $callback)
     {
         try {
