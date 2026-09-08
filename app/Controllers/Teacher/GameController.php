@@ -85,6 +85,11 @@ class GameController extends BaseController
             ? null
             : max(0, min(6, (int) $mysteryTileCount));
 
+        $boardSize = (string) $this->request->getPost('board_size');
+        if (! in_array($boardSize, ['50', '70', '100'], true)) {
+            $boardSize = '100';
+        }
+
         $modeCatalog = new GameModeCatalog();
         $gameMode = strtoupper((string) $this->request->getPost('game_mode'));
         if (! in_array($gameMode, $modeCatalog->playableKeys(), true)) {
@@ -108,6 +113,7 @@ class GameController extends BaseController
             'turn_order_mode' => $turnOrderMode,
             'finish_rule' => $finishRule,
             'mystery_tile_count' => $mysteryTileCount,
+            'board_size' => (int) $boardSize,
             'skip_quota' => $tenant->isSuperadmin(),
             'question_selection' => [
                 'strategy' => $questionStrategy,

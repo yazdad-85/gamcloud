@@ -146,6 +146,24 @@
             <p class="field-help">Kotak Mystery ditempatkan acak di papan saat room dibuat, tidak menumpuk dengan kotak spesial lain.</p>
         </div>
         <div class="field">
+            <label>Ukuran Papan</label>
+            <div class="check-grid">
+                <label class="check-option">
+                    <input type="radio" name="board_size" value="50" <?= old('board_size') === '50' ? 'checked' : '' ?>>
+                    <span>Kecil (50 kotak)</span>
+                </label>
+                <label class="check-option">
+                    <input type="radio" name="board_size" value="70" <?= old('board_size') === '70' ? 'checked' : '' ?>>
+                    <span>Sedang (70 kotak)</span>
+                </label>
+                <label class="check-option">
+                    <input type="radio" name="board_size" value="100" <?= old('board_size', '100') === '100' ? 'checked' : '' ?>>
+                    <span>Besar (100 kotak)</span>
+                </label>
+            </div>
+            <p class="field-help">Ukuran memengaruhi jumlah kotak dan tata letak ular/tangga/kotak spesial, tidak mengganti tema warna papan.</p>
+        </div>
+        <div class="field">
             <label for="turn_order_mode">Giliran Pertama</label>
             <select id="turn_order_mode" name="turn_order_mode">
                 <option value="random" <?= old('turn_order_mode', 'random') === 'random' ? 'selected' : '' ?>>Acak otomatis</option>
