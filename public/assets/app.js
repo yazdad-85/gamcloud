@@ -156,6 +156,10 @@
             '--board-ladder': palette.ladder || '#facc15',
             '--board-icon': themeIconMaskUrl(theme && theme.key),
         }).forEach(([key, value]) => element.style.setProperty(key, value));
+
+        // Pawn avatars also render in the leaderboard, which sits outside
+        // .board in the DOM and would otherwise never see this variable.
+        document.documentElement.style.setProperty('--board-accent', palette.accent || '#f97316');
     }
 
     function renderBoardPaths(boardElement, snapshot) {
