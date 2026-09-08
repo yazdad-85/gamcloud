@@ -358,7 +358,14 @@ class GameEngine
         $landedTile = $this->computeLandedTile((int) $team['position'], $dice, $room);
         $selectionRules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
         $targetDifficulty = $this->targetDifficultyForTurn($room, $landedTile);
-        $question = $this->selectQuestion((int) $room['teacher_id'], $targetDifficulty, $selectionRules['topic_ids'], (int) $room['id']);
+        $poolRecycled = false;
+        $question = $this->selectQuestion(
+            (int) $room['teacher_id'],
+            $targetDifficulty,
+            $selectionRules['topic_ids'],
+            (int) $room['id'],
+            $poolRecycled
+        );
         $now = date('Y-m-d H:i:s');
         $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
 
@@ -372,6 +379,14 @@ class GameEngine
         $this->bumpRoom($room['id']);
         $room = $this->roomById((int) $room['id']);
 
+        if ($poolRecycled) {
+            $this->recordEvent($room, 'question.pool_recycled', [
+                'room_uuid' => $room['public_uuid'],
+                'difficulty' => $targetDifficulty,
+                'topic_ids' => $selectionRules['topic_ids'],
+                'reason' => 'exhausted',
+            ]);
+        }
         $this->recordEvent($room, 'dice.rolled', [
             'team_uuid' => $team['public_uuid'],
             'dice_value' => $dice,
@@ -601,7 +616,14 @@ class GameEngine
         }
 
         $selectionRules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
-        $question = $this->selectQuestion((int) $room['teacher_id'], 'HARD', $selectionRules['topic_ids'], (int) $room['id']);
+        $poolRecycled = false;
+        $question = $this->selectQuestion(
+            (int) $room['teacher_id'],
+            'HARD',
+            $selectionRules['topic_ids'],
+            (int) $room['id'],
+            $poolRecycled
+        );
         $now = date('Y-m-d H:i:s');
         $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
 
@@ -615,6 +637,14 @@ class GameEngine
         $this->bumpRoom($room['id']);
         $room = $this->roomById((int) $room['id']);
 
+        if ($poolRecycled) {
+            $this->recordEvent($room, 'question.pool_recycled', [
+                'room_uuid' => $room['public_uuid'],
+                'difficulty' => 'HARD',
+                'topic_ids' => $selectionRules['topic_ids'],
+                'reason' => 'exhausted',
+            ]);
+        }
         $this->recordEvent($room, 'mystery.target_chosen', [
             'team_uuid' => $team['public_uuid'],
             'target' => $target,
@@ -929,9 +959,15 @@ class GameEngine
         return array_values(array_unique(array_filter(array_merge($fromAnswers, $fromTurns))));
     }
 
-    private function selectQuestion(int $teacherId, ?string $difficulty = null, array $topicIds = [], ?int $roomId = null): array
-    {
+    private function selectQuestion(
+        int $teacherId,
+        ?string $difficulty = null,
+        array $topicIds = [],
+        ?int $roomId = null,
+        ?bool &$recycled = null
+    ): array {
         $usedIds = $roomId !== null ? $this->usedQuestionIdsForRoom($roomId) : [];
+        $recycled = false;
 
         $pick = function (bool $excludeUsed) use ($teacherId, $difficulty, $topicIds, $usedIds): array {
             $query = (new QuestionModel())
@@ -964,7 +1000,6 @@ class GameEngine
         };
 
         $questions = $pick(true);
-        $recycled = false;
         if ($questions === []) {
             $questions = $pick(false);
             $recycled = $roomId !== null && $usedIds !== [];
@@ -974,19 +1009,7 @@ class GameEngine
             throw new DomainException('Bank soal masih kosong.');
         }
 
-        $selected = $questions[array_rand($questions)];
-
-        if ($recycled && $roomId !== null) {
-            $room = $this->roomById($roomId);
-            $this->recordEvent($room, 'question.pool_recycled', [
-                'room_uuid' => $room['public_uuid'],
-                'difficulty' => $difficulty,
-                'topic_ids' => $topicIds,
-                'reason' => 'exhausted',
-            ]);
-        }
-
-        return $selected;
+        return $questions[array_rand($questions)];
     }
 
     private function applyBoardJump(int $position, array $board, array &$activeEffects): array
