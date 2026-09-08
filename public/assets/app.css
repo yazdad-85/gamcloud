@@ -1047,6 +1047,28 @@ textarea {
     z-index: 0;
 }
 
+.board[data-theme="jungle_quest"] .tile {
+    border-radius: 14px 4px 14px 4px;
+}
+
+.board[data-theme="space_mission"] .tile {
+    border-radius: 2px;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+.board[data-theme="ocean_quest"] .tile {
+    border-radius: 4px 4px 12px 12px;
+}
+
+.board[data-theme="city_challenge"] .tile {
+    border-radius: 2px;
+}
+
+.board[data-theme="lab_challenge"] .tile {
+    border-style: dashed;
+    border-width: 1.5px;
+}
+
 .tile-number {
     font-size: clamp(10px, 1.35vh, 14px);
     font-weight: 800;
