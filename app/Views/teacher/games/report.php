@@ -149,3 +149,46 @@ $baseUrl = '/teacher/games/' . $room['public_uuid'] . '/report';
     <?php endif ?>
 </section>
 <?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<?php if (($report['charts']['accuracy']['labels'] ?? []) !== [] || ($report['charts']['team_results']['labels'] ?? []) !== []): ?>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    var charts = <?= json_encode($report['charts'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    var acc = document.getElementById('chart-accuracy');
+    if (acc && charts.accuracy && charts.accuracy.labels.length) {
+        new Chart(acc, {
+            type: 'bar',
+            data: {
+                labels: charts.accuracy.labels,
+                datasets: [{ label: 'Akurasi %', data: charts.accuracy.values, backgroundColor: '#2563eb' }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true, max: 100 } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+    var teams = document.getElementById('chart-teams');
+    if (teams && charts.team_results && charts.team_results.labels.length) {
+        new Chart(teams, {
+            type: 'bar',
+            data: {
+                labels: charts.team_results.labels,
+                datasets: [
+                    { label: 'Benar', data: charts.team_results.correct, backgroundColor: '#16a34a' },
+                    { label: 'Belum tepat', data: charts.team_results.wrong, backgroundColor: '#dc2626' }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
+            }
+        });
+    }
+})();
+</script>
+<?php endif ?>
+<?= $this->endSection() ?>
