@@ -1037,7 +1037,7 @@
             }
 
             if (diceDisplay && !isRolling) {
-                diceDisplay.textContent = turn && turn.dice_value ? turn.dice_value : '?';
+                GameFx.setDieResting(diceDisplay, turn && turn.dice_value ? Number(turn.dice_value) : null);
             }
 
             if (diceCaption) {
@@ -1115,19 +1115,23 @@
 
                 isRolling = true;
                 rollButton.disabled = true;
-                rollDiceAnimation(diceDisplay);
                 drawController();
                 runtime.setError('');
-                jsonFetch('/api/v1/rooms/' + config.roomUuid + '/roll', {
+
+                const rollRequest = jsonFetch('/api/v1/rooms/' + config.roomUuid + '/roll', {
                     method: 'POST',
                     body: JSON.stringify({team_uuid: config.teamUuid}),
-                })
-                    .then(runtime.refresh)
-                    .catch((error) => runtime.setError(error.message))
-                    .finally(() => {
-                        isRolling = false;
-                        drawController();
-                    });
+                });
+                const diceValuePromise = rollRequest.then((data) => Number(data.current_turn.dice_value));
+                const cubeSettled = GameFx.rollDie(diceDisplay, {resultPromise: diceValuePromise, minDurationMs: 1200});
+
+                Promise.all([
+                    rollRequest.then(runtime.refresh).catch((error) => runtime.setError(error.message)),
+                    cubeSettled,
+                ]).finally(() => {
+                    isRolling = false;
+                    drawController();
+                });
             });
         }
 
@@ -1208,21 +1212,6 @@
             : ['roll', 'answer'];
 
         return actions.includes(action);
-    }
-
-    function rollDiceAnimation(element) {
-        if (!element) {
-            return;
-        }
-
-        let ticks = 0;
-        const interval = window.setInterval(() => {
-            element.textContent = String(Math.floor(Math.random() * 6) + 1);
-            ticks += 1;
-            if (ticks >= 12) {
-                window.clearInterval(interval);
-            }
-        }, 80);
     }
 
     function mediaHtml(media, className) {
