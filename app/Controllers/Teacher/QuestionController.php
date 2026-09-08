@@ -5,7 +5,9 @@ namespace App\Controllers\Teacher;
 use App\Controllers\BaseController;
 use App\Models\QuestionModel;
 use App\Models\QuestionOptionModel;
+use App\Models\QuestionTopicModel;
 use App\Models\TeacherModel;
+use App\Services\Game\Uuid;
 use App\Services\Question\DocxQuestionImportService;
 use App\Services\Question\DocxQuestionTemplateService;
 use App\Services\Security\TenantContext;
@@ -74,8 +76,10 @@ class QuestionController extends BaseController
             return redirect()->back()->withInput()->with('error', 'Gunakan file .docx maksimal 5 MB.');
         }
 
+        $topicId = $this->resolveTopicId($teacherId);
+
         try {
-            $result = (new DocxQuestionImportService())->import($file->getTempName(), $teacherId);
+            $result = (new DocxQuestionImportService())->import($file->getTempName(), $teacherId, $topicId);
         } catch (DomainException $error) {
             return redirect()->back()->withInput()->with('error', $error->getMessage());
         } catch (Throwable $error) {
@@ -97,5 +101,28 @@ class QuestionController extends BaseController
         }
 
         return redirect()->to('/teacher/questions')->with('message', $message);
+    }
+
+    private function resolveTopicId(int $teacherId): ?int
+    {
+        $newTopicName = trim((string) $this->request->getPost('new_topic_name'));
+        if ($newTopicName !== '') {
+            $topicId = (new QuestionTopicModel())->insert([
+                'public_uuid' => Uuid::v4(),
+                'owner_teacher_id' => $teacherId,
+                'name' => substr($newTopicName, 0, 140),
+            ], true);
+
+            return (int) $topicId;
+        }
+
+        $topicId = (int) $this->request->getPost('topic_id');
+        if ($topicId < 1) {
+            return null;
+        }
+
+        $topic = (new QuestionTopicModel())->where('id', $topicId)->where('owner_teacher_id', $teacherId)->first();
+
+        return $topic !== null ? $topicId : null;
     }
 }
