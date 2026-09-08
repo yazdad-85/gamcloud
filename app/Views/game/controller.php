@@ -31,6 +31,13 @@
         <div class="answer-list" data-options></div>
     </div>
 
+    <div class="panel hidden" data-mystery-choice>
+        <h2>Kotak Misteri</h2>
+        <p class="muted">Pilih niatmu sebelum menjawab soal HARD.</p>
+        <button class="button" type="button" data-mystery-self>Untuk Timku</button>
+        <div class="answer-list" data-mystery-opponents></div>
+    </div>
+
     <div class="panel">
         <h2>Papan</h2>
         <div class="board" data-board></div>

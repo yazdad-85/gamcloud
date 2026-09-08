@@ -635,6 +635,18 @@
             }
             case 'tile.special_triggered':
                 return specialOverlay(payload.effect || {}, payload.team_uuid, snapshot);
+            case 'mystery.target_chosen':
+                return {
+                    tone: 'dice',
+                    title: 'Kotak Misteri',
+                    body: teamNameByUuid(payload.team_uuid, snapshot) + ' memilih ' + (payload.target === 'SELF' ? 'hadiah untuk timnya' : 'menyerang ' + teamNameByUuid(payload.target, snapshot)),
+                };
+            case 'mystery.resolved':
+                return {
+                    tone: payload.outcome === 'REWARD_SELF' ? 'success' : 'danger',
+                    title: payload.outcome === 'REWARD_SELF' ? 'Misteri: Hadiah!' : (payload.outcome === 'PUNISH_OPPONENT' ? 'Misteri: Kena Serang!' : 'Misteri: Boomerang!'),
+                    body: teamNameByUuid(payload.affected_team_uuid, snapshot) + (payload.outcome === 'REWARD_SELF' ? ' dapat efek positif' : ' kena efek negatif'),
+                };
             case 'turn.timeout':
                 return {
                     tone: 'danger',
@@ -684,9 +696,6 @@
         }
         if (type === 'SAFE_BLOCK') {
             return {tone: 'success', title: 'Perisai Aktif', body: 'Ular berhasil ditahan'};
-        }
-        if (type === 'MYSTERY') {
-            return {tone: 'dice', title: 'Tile Misteri', body: effect.label || team};
         }
         if (type === 'DUEL') {
             return {tone: 'dice', title: 'Duel Tile', body: 'Mode duel disiapkan'};
@@ -829,6 +838,9 @@
         const rollReason = document.querySelector('[data-roll-reason]');
         const questionBox = document.querySelector('[data-question]');
         const optionList = document.querySelector('[data-options]');
+        const mysteryChoiceBox = document.querySelector('[data-mystery-choice]');
+        const mysterySelfButton = document.querySelector('[data-mystery-self]');
+        const mysteryOpponents = document.querySelector('[data-mystery-opponents]');
         const turnInfo = document.querySelector('[data-turn-info]');
         let isRolling = false;
         let isAnswering = false;
@@ -841,7 +853,10 @@
             const current = (snapshot.teams || []).find((item) => item.uuid === snapshot.room.current_team_uuid);
             const canRoll = modeCan(snapshot, 'roll') && snapshot.room.status === 'PLAYING' && isMyTurn && turn && turn.state === 'ROLL_READY';
             const timeExpired = isClientTurnExpired(snapshot);
-            const canAnswer = modeCan(snapshot, 'answer') && isMyTurn && turn && turn.state === 'QUESTION_ACTIVE' && turn.question && !timeExpired;
+            const isMysteryChoice = Boolean(isMyTurn && turn && turn.state === 'MYSTERY_CHOICE_PENDING');
+            const canAnswer = modeCan(snapshot, 'answer') && isMyTurn && turn
+                && (turn.state === 'QUESTION_ACTIVE' || turn.state === 'MYSTERY_QUESTION_ACTIVE')
+                && turn.question && !timeExpired;
 
             document.querySelectorAll('[data-team-name]').forEach((el) => el.textContent = team ? team.name : 'Tim');
             document.querySelectorAll('[data-team-score]').forEach((el) => el.textContent = team ? team.score : '0');
@@ -885,9 +900,10 @@
                 }
             }
 
+            const showQuestion = canAnswer || (isMyTurn && turn && (turn.state === 'QUESTION_ACTIVE' || turn.state === 'MYSTERY_QUESTION_ACTIVE') && turn.question);
             if (questionBox && optionList) {
-                questionBox.classList.toggle('hidden', !(canAnswer || (isMyTurn && turn && turn.state === 'QUESTION_ACTIVE' && turn.question)));
-                optionList.innerHTML = (canAnswer || (isMyTurn && turn && turn.state === 'QUESTION_ACTIVE' && turn.question)) ? turn.question.options.map((option) => (
+                questionBox.classList.toggle('hidden', !showQuestion);
+                optionList.innerHTML = showQuestion ? turn.question.options.map((option) => (
                     '<button class="answer-button" data-option-id="' + option.id + '"' + (isAnswering ? ' disabled' : '') + '>' +
                     '<strong>' + escapeHtml(option.label) + '</strong>' +
                     '<span>' + escapeHtml(option.body) + '</span>' +
@@ -910,6 +926,19 @@
                 const media = document.querySelector('[data-question-media]');
                 if (media) {
                     media.innerHTML = turn && turn.question ? mediaHtml(turn.question.media, 'question-player-media') : '';
+                }
+            }
+
+            if (mysteryChoiceBox) {
+                mysteryChoiceBox.classList.toggle('hidden', !isMysteryChoice);
+                if (mysterySelfButton) {
+                    mysterySelfButton.disabled = !isMysteryChoice;
+                }
+                if (isMysteryChoice && mysteryOpponents) {
+                    mysteryOpponents.innerHTML = (snapshot.teams || [])
+                        .filter((item) => item.uuid !== config.teamUuid)
+                        .map((item) => '<button class="answer-button" type="button" data-mystery-target="' + item.uuid + '"><strong>Serang</strong><span>' + escapeHtml(item.name) + '</span></button>')
+                        .join('');
                 }
             }
         }
@@ -1025,7 +1054,9 @@
                 isAnswering = true;
                 drawController();
                 runtime.setError('');
-                jsonFetch('/api/v1/rooms/' + config.roomUuid + '/answer', {
+                const activeTurn = runtime.getSnapshot().current_turn;
+                const endpoint = activeTurn && activeTurn.state === 'MYSTERY_QUESTION_ACTIVE' ? '/mystery/answer' : '/answer';
+                jsonFetch('/api/v1/rooms/' + config.roomUuid + endpoint, {
                     method: 'POST',
                     body: JSON.stringify({team_uuid: config.teamUuid, option_id: button.dataset.optionId}),
                 })
@@ -1035,6 +1066,37 @@
                         isAnswering = false;
                         drawController();
                     });
+            });
+        }
+
+        if (mysterySelfButton) {
+            mysterySelfButton.addEventListener('click', function () {
+                if (mysterySelfButton.disabled) {
+                    return;
+                }
+                runtime.setError('');
+                jsonFetch('/api/v1/rooms/' + config.roomUuid + '/mystery/choose', {
+                    method: 'POST',
+                    body: JSON.stringify({team_uuid: config.teamUuid, target: 'SELF'}),
+                })
+                    .then(runtime.refresh)
+                    .catch((error) => runtime.setError(error.message));
+            });
+        }
+
+        if (mysteryOpponents) {
+            mysteryOpponents.addEventListener('click', function (event) {
+                const button = event.target.closest('[data-mystery-target]');
+                if (!button) {
+                    return;
+                }
+                runtime.setError('');
+                jsonFetch('/api/v1/rooms/' + config.roomUuid + '/mystery/choose', {
+                    method: 'POST',
+                    body: JSON.stringify({team_uuid: config.teamUuid, target: button.dataset.mysteryTarget}),
+                })
+                    .then(runtime.refresh)
+                    .catch((error) => runtime.setError(error.message));
             });
         }
 
