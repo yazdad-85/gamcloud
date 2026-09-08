@@ -844,6 +844,7 @@
         const turnInfo = document.querySelector('[data-turn-info]');
         let isRolling = false;
         let isAnswering = false;
+        let isChoosingMystery = false;
 
         function drawController() {
             const snapshot = runtime.getSnapshot();
@@ -932,13 +933,13 @@
             if (mysteryChoiceBox) {
                 mysteryChoiceBox.classList.toggle('hidden', !isMysteryChoice);
                 if (mysterySelfButton) {
-                    mysterySelfButton.disabled = !isMysteryChoice;
+                    mysterySelfButton.disabled = !isMysteryChoice || isChoosingMystery;
                 }
-                if (isMysteryChoice && mysteryOpponents) {
-                    mysteryOpponents.innerHTML = (snapshot.teams || [])
+                if (mysteryOpponents) {
+                    mysteryOpponents.innerHTML = isMysteryChoice ? (snapshot.teams || [])
                         .filter((item) => item.uuid !== config.teamUuid)
-                        .map((item) => '<button class="answer-button" type="button" data-mystery-target="' + item.uuid + '"><strong>Serang</strong><span>' + escapeHtml(item.name) + '</span></button>')
-                        .join('');
+                        .map((item) => '<button class="answer-button" type="button" data-mystery-target="' + item.uuid + '"' + (isChoosingMystery ? ' disabled' : '') + '><strong>Serang</strong><span>' + escapeHtml(item.name) + '</span></button>')
+                        .join('') : '';
                 }
             }
         }
@@ -1071,32 +1072,44 @@
 
         if (mysterySelfButton) {
             mysterySelfButton.addEventListener('click', function () {
-                if (mysterySelfButton.disabled) {
+                if (mysterySelfButton.disabled || isChoosingMystery) {
                     return;
                 }
+                isChoosingMystery = true;
+                drawController();
                 runtime.setError('');
                 jsonFetch('/api/v1/rooms/' + config.roomUuid + '/mystery/choose', {
                     method: 'POST',
                     body: JSON.stringify({team_uuid: config.teamUuid, target: 'SELF'}),
                 })
                     .then(runtime.refresh)
-                    .catch((error) => runtime.setError(error.message));
+                    .catch((error) => runtime.setError(error.message))
+                    .finally(() => {
+                        isChoosingMystery = false;
+                        drawController();
+                    });
             });
         }
 
         if (mysteryOpponents) {
             mysteryOpponents.addEventListener('click', function (event) {
                 const button = event.target.closest('[data-mystery-target]');
-                if (!button) {
+                if (!button || button.disabled || isChoosingMystery) {
                     return;
                 }
+                isChoosingMystery = true;
+                drawController();
                 runtime.setError('');
                 jsonFetch('/api/v1/rooms/' + config.roomUuid + '/mystery/choose', {
                     method: 'POST',
                     body: JSON.stringify({team_uuid: config.teamUuid, target: button.dataset.mysteryTarget}),
                 })
                     .then(runtime.refresh)
-                    .catch((error) => runtime.setError(error.message));
+                    .catch((error) => runtime.setError(error.message))
+                    .finally(() => {
+                        isChoosingMystery = false;
+                        drawController();
+                    });
             });
         }
 
