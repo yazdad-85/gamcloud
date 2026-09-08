@@ -3040,8 +3040,10 @@ textarea {
 .panel-head h2 { margin: 0; }
 .report-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 .report-chart-card h3 { margin: 0 0 8px; font-size: 14px; }
-.pagination { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.pagination a {
+#analisis-soal .pagination,
+#jawaban-tim .pagination { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+#analisis-soal .pagination a,
+#jawaban-tim .pagination a {
     display: inline-flex;
     min-width: 32px;
     height: 32px;
@@ -3053,4 +3055,5 @@ textarea {
     color: inherit;
     padding: 0 8px;
 }
-.pagination a.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+#analisis-soal .pagination a.active,
+#jawaban-tim .pagination a.active { background: #2563eb; border-color: #2563eb; color: #fff; }
