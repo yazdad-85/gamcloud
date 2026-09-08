@@ -821,7 +821,15 @@
         }
 
         if (to !== landed) {
-            path.push(to);
+            if (to < landed) {
+                for (let tile = landed - 1; tile >= to; tile--) {
+                    path.push(tile);
+                }
+            } else {
+                for (let tile = landed + 1; tile <= to; tile++) {
+                    path.push(tile);
+                }
+            }
         }
 
         return path.filter((tile, index, items) => tile >= 1 && tile <= max && (index === 0 || tile !== items[index - 1]));
