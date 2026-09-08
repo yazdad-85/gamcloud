@@ -15,6 +15,39 @@
     <div class="alert"><?= esc(session('error')) ?></div>
 <?php endif ?>
 
+<section class="panel">
+    <h2>Topik</h2>
+    <p class="muted">Kelompokkan bank soal supaya lebih mudah dikelola.</p>
+    <div class="check-grid">
+        <a class="check-option" href="/teacher/questions" style="text-decoration:none">
+            <span>Semua Soal (<?= esc((string) count($questions)) ?>)</span>
+        </a>
+        <a class="check-option" href="/teacher/questions?topic=none" style="text-decoration:none">
+            <span>Tanpa Topik</span>
+        </a>
+        <?php foreach ($topics as $topic): ?>
+            <div class="check-option" style="justify-content:space-between">
+                <a href="/teacher/questions?topic=<?= esc($topic['public_uuid']) ?>" style="text-decoration:none"><span><?= esc($topic['name']) ?></span></a>
+                <form method="post" action="/teacher/topics/<?= esc($topic['public_uuid']) ?>/delete" onsubmit="return confirm('Hapus topik ini? Soal di dalamnya TIDAK ikut terhapus, hanya jadi Tanpa Topik.');" style="display:inline">
+                    <?= csrf_field() ?>
+                    <button class="button danger" type="submit" style="min-height:auto;padding:4px 8px">Hapus</button>
+                </form>
+            </div>
+        <?php endforeach ?>
+    </div>
+    <form class="form" method="post" action="/teacher/topics" style="margin-top:12px">
+        <?= csrf_field() ?>
+        <?php if (! empty($isSuperadmin)): ?>
+            <input type="hidden" name="owner_teacher_id" value="<?= esc((string) old('owner_teacher_id')) ?>">
+        <?php endif ?>
+        <div class="field">
+            <label for="topic_name">Topik Baru</label>
+            <input id="topic_name" name="name" placeholder="Contoh: Bab 1 - Pecahan" required>
+        </div>
+        <button class="button secondary" type="submit">Buat Topik</button>
+    </form>
+</section>
+
 <section class="panel import-panel">
     <div>
         <h2>Import Soal DOCX</h2>
@@ -51,6 +84,17 @@ Jawaban: Benar</pre>
             <input id="docx_file" name="docx_file" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
             <p class="field-help">Maksimal 5 MB. Gambar yang diterima: JPG, PNG, GIF, WEBP.</p>
         </div>
+        <div class="field">
+            <label for="topic_id">Topik</label>
+            <select id="topic_id" name="topic_id">
+                <option value="">Tanpa Topik</option>
+                <?php foreach ($topics as $topic): ?>
+                    <option value="<?= esc((string) $topic['id']) ?>"><?= esc($topic['name']) ?></option>
+                <?php endforeach ?>
+            </select>
+            <p class="field-help">Atau isi nama topik baru di bawah ini (mengabaikan pilihan di atas kalau diisi):</p>
+            <input id="new_topic_name" name="new_topic_name" placeholder="Nama topik baru (opsional)">
+        </div>
         <button class="button" type="submit">Import ke Bank Soal</button>
     </form>
 </section>
@@ -62,6 +106,7 @@ Jawaban: Benar</pre>
         <article class="card">
             <h2><?= esc($question['stem']) ?></h2>
             <p class="muted"><?= esc($question['source_type']) ?> / <?= esc($question['question_type']) ?> / <?= esc($question['difficulty']) ?> / <?= esc($question['status']) ?></p>
+            <p class="muted">Topik: <?= esc($topicNames[$question['topic_id']] ?? 'Tanpa Topik') ?></p>
             <?php if ($questionImages !== []): ?>
                 <div class="question-media">
                     <?php foreach ($questionImages as $image): ?>
