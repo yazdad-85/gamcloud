@@ -1057,7 +1057,8 @@
             const timeExpired = isClientTurnExpired(snapshot);
             const isMysteryChoice = Boolean(isMyTurn && turn && turn.state === 'MYSTERY_CHOICE_PENDING');
             const canAnswer = modeCan(snapshot, 'answer') && isMyTurn && turn
-                && (turn.state === 'QUESTION_ACTIVE' || turn.state === 'MYSTERY_QUESTION_ACTIVE')
+                && (turn.state === 'QUESTION_ACTIVE' || turn.state === 'MYSTERY_QUESTION_ACTIVE'
+                    || turn.state === 'SNAKE_REDEMPTION_ACTIVE' || turn.state === 'LADDER_CHALLENGE_ACTIVE')
                 && turn.question && !timeExpired;
 
             document.querySelectorAll('[data-team-name]').forEach((el) => el.textContent = team ? team.name : 'Tim');
@@ -1102,7 +1103,10 @@
                 }
             }
 
-            const showQuestion = canAnswer || (isMyTurn && turn && (turn.state === 'QUESTION_ACTIVE' || turn.state === 'MYSTERY_QUESTION_ACTIVE') && turn.question);
+            const showQuestion = canAnswer || (isMyTurn && turn
+                && (turn.state === 'QUESTION_ACTIVE' || turn.state === 'MYSTERY_QUESTION_ACTIVE'
+                    || turn.state === 'SNAKE_REDEMPTION_ACTIVE' || turn.state === 'LADDER_CHALLENGE_ACTIVE')
+                && turn.question);
             if (questionBox && optionList) {
                 questionBox.classList.toggle('hidden', !showQuestion);
                 optionList.innerHTML = showQuestion ? turn.question.options.map((option) => (
@@ -1115,6 +1119,16 @@
                 optionList.querySelectorAll('button').forEach((button) => {
                     button.disabled = button.disabled || !canAnswer;
                 });
+                const questionTitle = document.querySelector('[data-question-title]');
+                if (questionTitle && turn) {
+                    if (turn.state === 'SNAKE_REDEMPTION_ACTIVE') {
+                        questionTitle.textContent = 'Soal penyelamat ular (HARD)';
+                    } else if (turn.state === 'LADDER_CHALLENGE_ACTIVE') {
+                        questionTitle.textContent = 'Soal klaim tangga (HARD)';
+                    } else {
+                        questionTitle.textContent = 'Pertanyaan';
+                    }
+                }
                 const stem = document.querySelector('[data-question-stem]');
                 if (stem && turn && turn.question) {
                     stem.textContent = turn.question.stem;
@@ -1261,7 +1275,12 @@
                 drawController();
                 runtime.setError('');
                 const activeTurn = runtime.getSnapshot().current_turn;
-                const endpoint = activeTurn && activeTurn.state === 'MYSTERY_QUESTION_ACTIVE' ? '/mystery/answer' : '/answer';
+                let endpoint = '/answer';
+                if (activeTurn && activeTurn.state === 'MYSTERY_QUESTION_ACTIVE') {
+                    endpoint = '/mystery/answer';
+                } else if (activeTurn && (activeTurn.state === 'SNAKE_REDEMPTION_ACTIVE' || activeTurn.state === 'LADDER_CHALLENGE_ACTIVE')) {
+                    endpoint = '/board-challenge/answer';
+                }
                 jsonFetch('/api/v1/rooms/' + config.roomUuid + endpoint, {
                     method: 'POST',
                     body: JSON.stringify({team_uuid: config.teamUuid, option_id: button.dataset.optionId}),

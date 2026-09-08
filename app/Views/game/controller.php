@@ -31,7 +31,8 @@
     </div>
 
     <div class="panel hidden" data-question>
-        <h2 data-question-stem>Pertanyaan</h2>
+        <h2 data-question-title>Pertanyaan</h2>
+        <p data-question-stem></p>
         <p class="question-meta" data-question-meta></p>
         <div data-question-media></div>
         <div class="answer-list" data-options></div>
