@@ -10,6 +10,7 @@ use App\Models\GameTurnModel;
 use App\Models\QuestionOptionModel;
 use App\Models\ScoreTransactionModel;
 use App\Services\Game\GameEngine;
+use App\Services\Game\Uuid;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 
@@ -94,6 +95,33 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame('HARD', $lastQuestion['payload']['selection']['requested_difficulty']);
         $this->assertContains($snapshot['current_turn']['question']['difficulty'], ['EASY', 'MEDIUM']);
         $this->assertContains($lastQuestion['payload']['selection']['selected_difficulty'], ['EASY', 'MEDIUM']);
+    }
+
+    public function testDifficultyZoneScalesWithNonStandardBoardSize(): void
+    {
+        $customBoardId = (new BoardTemplateModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'name' => 'Papan 60 Kotak Test',
+            'tile_count' => 60,
+            'ladders_json' => json_encode([]),
+            'snakes_json' => json_encode([]),
+            'special_tiles_json' => json_encode([]),
+            'theme_json' => json_encode(['name' => 'Test 60']),
+            'status' => 'ACTIVE',
+        ], true);
+
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Small Board Test', [
+            'board_template_id' => $customBoardId,
+            'question_selection' => ['strategy' => 'difficulty_zone'],
+        ])['room'];
+
+        $this->assertSame(60, $room['max_position']);
+        $this->assertSame([
+            ['from' => 1, 'to' => 18, 'difficulty' => 'EASY'],
+            ['from' => 19, 'to' => 42, 'difficulty' => 'MEDIUM'],
+            ['from' => 43, 'to' => 60, 'difficulty' => 'HARD'],
+        ], $room['question_selection']['zones']);
     }
 
     public function testCreateRoomFallsBackWhenGameModeIsNotPlayableYet(): void

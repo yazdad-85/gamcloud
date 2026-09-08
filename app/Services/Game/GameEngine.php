@@ -57,7 +57,7 @@ class GameEngine
         $turnOrderMode = $this->validOption((string) ($options['turn_order_mode'] ?? 'random'), ['random', 'join_order'], 'random');
         $finishRule = $this->validOption((string) ($options['finish_rule'] ?? 'clamp_finish'), ['clamp_finish', 'exact_finish'], 'clamp_finish');
         $scoring = $this->scoringRules($options['scoring'] ?? []);
-        $questionSelection = $this->questionSelectionRules($options['question_selection'] ?? []);
+        $questionSelection = $this->questionSelectionRules($options['question_selection'] ?? [], (int) $board['tile_count']);
         $gameModeKey = $this->validOption(strtoupper((string) ($options['game_mode'] ?? 'SNAKES_LADDERS')), $this->modes->playableKeys(), 'SNAKES_LADDERS');
         $gameMode = $this->modes->resolve($gameModeKey);
         $baseRoomState = [
@@ -356,7 +356,7 @@ class GameEngine
             'turn_uuid' => $turn['public_uuid'],
             'question' => $this->publicQuestion($question),
             'selection' => [
-                'strategy' => $this->questionSelectionRules($room['question_selection_json'] ?? [])['strategy'],
+                'strategy' => $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position'])['strategy'],
                 'requested_difficulty' => $targetDifficulty,
                 'selected_difficulty' => $question['difficulty'],
                 'based_on_position' => $landedTile,
@@ -1133,7 +1133,7 @@ class GameEngine
         ];
     }
 
-    private function questionSelectionRules($source): array
+    private function questionSelectionRules($source, int $maxPosition): array
     {
         if (is_string($source)) {
             $source = json_decode($source, true) ?: [];
@@ -1143,13 +1143,16 @@ class GameEngine
         }
 
         $strategy = $this->validOption((string) ($source['strategy'] ?? 'difficulty_zone'), ['difficulty_zone', 'random'], 'difficulty_zone');
+        $maxPosition = max(1, $maxPosition);
+        $easyTo = max(1, (int) round($maxPosition * 0.3));
+        $mediumTo = max($easyTo, (int) round($maxPosition * 0.7));
 
         return [
             'strategy' => $strategy,
             'zones' => [
-                ['from' => 1, 'to' => 30, 'difficulty' => 'EASY'],
-                ['from' => 31, 'to' => 70, 'difficulty' => 'MEDIUM'],
-                ['from' => 71, 'to' => 100, 'difficulty' => 'HARD'],
+                ['from' => 1, 'to' => $easyTo, 'difficulty' => 'EASY'],
+                ['from' => $easyTo + 1, 'to' => $mediumTo, 'difficulty' => 'MEDIUM'],
+                ['from' => $mediumTo + 1, 'to' => $maxPosition, 'difficulty' => 'HARD'],
             ],
             'fallback' => 'any_published_question',
         ];
@@ -1157,7 +1160,7 @@ class GameEngine
 
     private function targetDifficultyForTurn(array $room, int $position): ?string
     {
-        $rules = $this->questionSelectionRules($room['question_selection_json'] ?? []);
+        $rules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
         if ($rules['strategy'] !== 'difficulty_zone') {
             return null;
         }
@@ -1168,7 +1171,7 @@ class GameEngine
             }
         }
 
-        return 'HARD';
+        return $rules['zones'][count($rules['zones']) - 1]['difficulty'];
     }
 
     private function boolRule(array $source, string $key, bool $default): bool
@@ -1322,7 +1325,7 @@ class GameEngine
             'turn_order_mode' => $room['turn_order_mode'] ?? 'random',
             'finish_rule' => $room['finish_rule'] ?? 'clamp_finish',
             'scoring' => $this->scoringRules($room['scoring_json'] ?? []),
-            'question_selection' => $this->questionSelectionRules($room['question_selection_json'] ?? []),
+            'question_selection' => $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']),
             'started_at' => $room['started_at'],
             'finished_at' => $room['finished_at'],
         ];
