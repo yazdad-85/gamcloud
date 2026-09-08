@@ -48,7 +48,6 @@ $baseUrl = '/teacher/games/' . $room['public_uuid'] . '/report';
             <tr class="<?= ! empty($team['is_board_winner']) ? 'is-board-winner' : '' ?>">
                 <td><?= $index + 1 ?></td>
                 <td>
-                    <span class="pawn" style="background:<?= esc($team['color']) ?>"></span>
                     <?= esc($team['name']) ?>
                     <?php if (! empty($team['is_board_winner'])): ?>
                         <span class="badge-winner">Juara Papan</span>
