@@ -2308,6 +2308,69 @@ textarea {
     width: 30px;
 }
 
+.team-identity {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    margin: 6px 0;
+}
+
+.team-avatar-badge {
+    align-items: center;
+    background: var(--team-color, #2563eb);
+    border: 3px solid #ffffff;
+    border-radius: 999px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .28), 0 0 0 5px color-mix(in srgb, var(--board-accent, #f97316) 45%, transparent);
+    color: #ffffff;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 15px;
+    font-weight: 900;
+    height: 48px;
+    justify-content: center;
+    line-height: 1;
+    position: relative;
+    width: 48px;
+}
+
+.team-avatar-badge::after {
+    background: color-mix(in srgb, var(--team-color, #2563eb) 70%, #000000);
+    border-radius: 999px;
+    bottom: -7px;
+    content: "";
+    height: 6px;
+    left: 50%;
+    opacity: .85;
+    position: absolute;
+    transform: translateX(-50%);
+    width: 16px;
+}
+
+.move-feedback {
+    animation: overlayPop .28s ease-out;
+    border-radius: var(--radius);
+    font-weight: 700;
+    padding: 12px;
+}
+
+.move-feedback.tone-success {
+    background: #dcfce7;
+    border: 1px solid #86efac;
+    color: #14532d;
+}
+
+.move-feedback.tone-danger {
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #7f1d1d;
+}
+
+.move-feedback.tone-info {
+    background: #e0f2fe;
+    border: 1px solid #7dd3fc;
+    color: #0c4a6e;
+}
+
 .tile-glow {
     animation: tileGlow 1.35s ease-out;
 }

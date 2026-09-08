@@ -624,6 +624,23 @@
         }));
     }
 
+    function movementFeedbackText(payload) {
+        const movement = payload.movement || {};
+        if (movement.special === 'LADDER') {
+            return {tone: 'success', body: 'Naik tangga ke kotak ' + movement.to};
+        }
+        if (movement.special === 'SNAKE') {
+            return {tone: 'danger', body: 'Kena ular, turun ke kotak ' + movement.to};
+        }
+        if (movement.finish_bounced) {
+            return {tone: 'info', body: 'Melewati finish, memantul ke ' + movement.to};
+        }
+        if (movement.special === 'TRAP') {
+            return {tone: 'danger', body: 'Trap aktif, mundur ke kotak ' + movement.to};
+        }
+        return null;
+    }
+
     function overlayForEvent(event, snapshot) {
         const payload = event.payload || {};
         switch (event.event) {
@@ -640,19 +657,11 @@
                     body: 'Dadu ' + payload.dice_value,
                 };
             case 'answer.resolved': {
-                const movement = payload.movement || {};
+                const feedback = movementFeedbackText(payload);
                 return {
                     tone: payload.is_correct ? 'success' : 'danger',
                     title: payload.is_correct ? 'Jawaban Benar' : 'Belum Tepat',
-                    body: movement.special === 'LADDER'
-                        ? 'Naik tangga ke kotak ' + movement.to
-                        : movement.special === 'SNAKE'
-                            ? 'Kena ular, turun ke kotak ' + movement.to
-                            : movement.finish_bounced
-                                ? 'Melewati finish, memantul ke ' + movement.to
-                                : movement.special === 'TRAP'
-                                    ? 'Trap aktif, mundur ke kotak ' + movement.to
-                                : teamNameByUuid(payload.team_uuid, snapshot),
+                    body: feedback ? feedback.body : teamNameByUuid(payload.team_uuid, snapshot),
                 };
             }
             case 'tile.special_triggered':
@@ -865,16 +874,69 @@
         const mysterySelfButton = document.querySelector('[data-mystery-self]');
         const mysteryOpponents = document.querySelector('[data-mystery-opponents]');
         const turnInfo = document.querySelector('[data-turn-info]');
+        const teamAvatarBadge = document.querySelector('[data-team-avatar]');
+        const teamAvatarInitials = document.querySelector('[data-team-avatar-initials]');
+        const moveFeedback = document.querySelector('[data-move-feedback]');
         let isRolling = false;
         let isAnswering = false;
         let isChoosingMystery = false;
+        let moveFeedbackTimer = null;
+        const seenTeamEvents = new Set((config.snapshot.events || []).map((event) => event.event_id));
+
+        function showMoveFeedback(text, tone) {
+            if (!moveFeedback) {
+                return;
+            }
+            moveFeedback.textContent = text;
+            moveFeedback.className = 'move-feedback tone-' + tone;
+            if (moveFeedbackTimer) {
+                window.clearTimeout(moveFeedbackTimer);
+            }
+            moveFeedbackTimer = window.setTimeout(() => {
+                moveFeedback.classList.add('hidden');
+            }, 4500);
+        }
+
+        function checkMoveFeedback(snapshot) {
+            (snapshot.events || []).forEach((event) => {
+                if (seenTeamEvents.has(event.event_id)) {
+                    return;
+                }
+                seenTeamEvents.add(event.event_id);
+                const payload = event.payload || {};
+                if (payload.team_uuid !== config.teamUuid) {
+                    return;
+                }
+                if (event.event === 'answer.resolved') {
+                    const feedback = movementFeedbackText(payload);
+                    if (feedback) {
+                        showMoveFeedback(feedback.body, feedback.tone);
+                    }
+                } else if (event.event === 'tile.special_triggered') {
+                    const effectType = String((payload.effect || {}).type || '').toUpperCase();
+                    if (effectType === 'BONUS' || effectType === 'SAFE' || effectType === 'SAFE_BLOCK') {
+                        const overlay = specialOverlay(payload.effect || {}, payload.team_uuid, snapshot);
+                        showMoveFeedback(overlay.body, overlay.tone);
+                    }
+                }
+            });
+        }
 
         function drawController() {
             const snapshot = runtime.getSnapshot();
+            checkMoveFeedback(snapshot);
             const turn = snapshot.current_turn;
             const isMyTurn = turn && turn.team_uuid === config.teamUuid;
             const team = (snapshot.teams || []).find((item) => item.uuid === config.teamUuid);
             const current = (snapshot.teams || []).find((item) => item.uuid === snapshot.room.current_team_uuid);
+
+            if (teamAvatarBadge) {
+                teamAvatarBadge.className = 'team-avatar-badge' + (team ? ' avatar-' + avatarClass(team.avatar) : '');
+                teamAvatarBadge.style.setProperty('--team-color', team ? team.color : '#64748b');
+            }
+            if (teamAvatarInitials) {
+                teamAvatarInitials.textContent = team ? teamInitials(team.name) : '';
+            }
             const canRoll = modeCan(snapshot, 'roll') && snapshot.room.status === 'PLAYING' && isMyTurn && turn && turn.state === 'ROLL_READY';
             const timeExpired = isClientTurnExpired(snapshot);
             const isMysteryChoice = Boolean(isMyTurn && turn && turn.state === 'MYSTERY_CHOICE_PENDING');

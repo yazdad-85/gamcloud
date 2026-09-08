@@ -5,12 +5,18 @@
 <section class="controller-wrap">
     <div class="panel">
         <p class="muted"><?= esc($room['title']) ?></p>
-        <h1 class="page-title" data-team-name>Tim</h1>
-        <p><span data-turn-info>Menunggu giliran</span></p>
+        <div class="team-identity">
+            <span class="team-avatar-badge" data-team-avatar><span data-team-avatar-initials></span></span>
+            <div>
+                <h1 class="page-title" data-team-name>Tim</h1>
+                <p><span data-turn-info>Menunggu giliran</span></p>
+            </div>
+        </div>
         <p>Skor <strong data-team-score>0</strong> / Kotak <strong data-team-position>1</strong></p>
     </div>
 
     <div class="alert hidden" data-error></div>
+    <div class="move-feedback hidden" data-move-feedback></div>
 
     <div class="panel dice-panel" data-dice-panel>
         <div class="dice-stage">
