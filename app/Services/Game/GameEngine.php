@@ -756,7 +756,7 @@ class GameEngine
         $activeEffects = $this->teamEffects($team);
 
         $boardJump = $this->applyBoardJump($landed, $board, $activeEffects);
-        $tileEffect = $this->applySpecialTileEffect($boardJump['to'], $board, $maxPosition, $activeEffects);
+        $tileEffect = $this->applySpecialTileEffect($boardJump['to'], $board, $activeEffects);
         $effects = array_merge($boardJump['effects'], $tileEffect['effects']);
         $special = $tileEffect['special'] ?? $boardJump['type'];
 
@@ -773,7 +773,7 @@ class GameEngine
         ];
     }
 
-    private function applySpecialTileEffect(int $position, array $board, int $maxPosition, array &$activeEffects): array
+    private function applySpecialTileEffect(int $position, array $board, array &$activeEffects): array
     {
         $tile = $this->specialTileAt($position, $board);
         if ($tile === null) {
