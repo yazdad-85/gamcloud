@@ -1029,7 +1029,7 @@ textarea {
 
 .tile-theme-icon::before {
     background-color: currentColor;
-    bottom: 3px;
+    bottom: 6px;
     content: "";
     -webkit-mask-image: var(--board-icon);
     mask-image: var(--board-icon);
@@ -1042,7 +1042,7 @@ textarea {
     height: 60%;
     opacity: .16;
     position: absolute;
-    right: 3px;
+    right: 6px;
     width: 60%;
     z-index: 0;
 }
