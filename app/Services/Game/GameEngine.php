@@ -696,10 +696,11 @@ class GameEngine
         $finishedTeamUuid = null;
 
         if ($isCorrect && $targetTeamId === null) {
-            $newPosition = $this->applyMysteryDeltaToTeam($room, $team, 80, 3, $maxPosition);
+            $fromPosition = (int) $team['position'];
+            $toPosition = $this->applyMysteryDeltaToTeam($room, $team, 80, 3, $maxPosition);
             $outcome = 'REWARD_SELF';
             $affectedTeamUuid = $team['public_uuid'];
-            if ($newPosition >= $maxPosition) {
+            if ($toPosition >= $maxPosition) {
                 $finished = true;
                 $finishedTeamUuid = $team['public_uuid'];
             }
@@ -708,13 +709,15 @@ class GameEngine
             if ($opponent === null) {
                 throw new DomainException('Tim target Kotak Misteri sudah tidak ada.');
             }
-            $this->applyMysteryDeltaToTeam($room, $opponent, -60, -4, $maxPosition);
+            $fromPosition = (int) $opponent['position'];
+            $toPosition = $this->applyMysteryDeltaToTeam($room, $opponent, -60, -4, $maxPosition);
             $outcome = 'PUNISH_OPPONENT';
             $affectedTeamUuid = $opponent['public_uuid'];
         } else {
             // Wrong answer or timeout always punishes the answering team,
             // regardless of whether they had chosen SELF or an opponent.
-            $this->applyMysteryDeltaToTeam($room, $team, -60, -4, $maxPosition);
+            $fromPosition = (int) $team['position'];
+            $toPosition = $this->applyMysteryDeltaToTeam($room, $team, -60, -4, $maxPosition);
             $outcome = 'BOOMERANG_SELF';
             $affectedTeamUuid = $team['public_uuid'];
         }
@@ -749,6 +752,7 @@ class GameEngine
             'affected_team_uuid' => $affectedTeamUuid,
             'is_correct' => $isCorrect,
             'outcome' => $outcome,
+            'movement' => ['from' => $fromPosition, 'landed' => $fromPosition, 'to' => $toPosition],
         ]);
         if ($finished) {
             $this->recordEvent($room, 'game.finished', [

@@ -480,6 +480,7 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame('TURN_COMPLETED', (new GameTurnModel())->find($turn['id'])['state']);
         $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.resolved');
         $this->assertSame('REWARD_SELF', $lastEvent['payload']['outcome']);
+        $this->assertSame(['from' => 46, 'landed' => 46, 'to' => 49], $lastEvent['payload']['movement']);
     }
 
     public function testMysteryPunishOpponentOnCorrectAnswer(): void
@@ -509,6 +510,7 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.resolved');
         $this->assertSame('PUNISH_OPPONENT', $lastEvent['payload']['outcome']);
         $this->assertSame($opponent['public_uuid'], $lastEvent['payload']['affected_team_uuid']);
+        $this->assertSame(['from' => 30, 'landed' => 30, 'to' => 26], $lastEvent['payload']['movement']);
     }
 
     public function testMysteryBoomerangsToSelfOnWrongAnswer(): void
@@ -536,6 +538,7 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame(0, $updatedOpponent['score']);
         $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.resolved');
         $this->assertSame('BOOMERANG_SELF', $lastEvent['payload']['outcome']);
+        $this->assertSame(['from' => 46, 'landed' => 46, 'to' => 42], $lastEvent['payload']['movement']);
     }
 
     public function testMysteryQuestionTimeoutBoomerangsToSelf(): void
@@ -564,6 +567,7 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame(40, $updatedTeam['score']);
         $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.resolved');
         $this->assertSame('BOOMERANG_SELF', $lastEvent['payload']['outcome']);
+        $this->assertSame(['from' => 46, 'landed' => 46, 'to' => 42], $lastEvent['payload']['movement']);
     }
 
     public function testDuelTileIsHiddenAndActsAsNormalTile(): void
