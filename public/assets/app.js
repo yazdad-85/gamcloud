@@ -126,6 +126,22 @@
         window.requestAnimationFrame(() => renderBoardPaths(element, snapshot));
     }
 
+    const THEME_ICON_SHAPES = {
+        classic_arena: '<path d="M12 2 20 5v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5Z"/>',
+        jungle_quest: '<path d="M12 2C4 6 4 14 4 20 10 20 20 14 20 4 16 4 14 3 12 2Z"/>',
+        space_mission: '<path d="M12 2 14 10 22 12 14 14 12 22 10 14 2 12 10 10Z"/>',
+        ocean_quest: '<path d="M2 15c3-4 5-4 8 0s5 4 8 0 5-4 4 0" fill="none" stroke="black" stroke-width="2.4" stroke-linecap="round"/>',
+        city_challenge: '<path d="M3 21V10H8V21M10 21V4H15V21M17 21V13H21V21" fill="none" stroke="black" stroke-width="2"/>',
+        lab_challenge: '<path d="M9 2h6v6l5 12c.8 1.8-.5 3-2.4 3H6.4C4.5 23 3.2 21.8 4 20l5-12Z"/>',
+    };
+
+    function themeIconMaskUrl(themeKey) {
+        const shape = THEME_ICON_SHAPES[themeKey] || THEME_ICON_SHAPES.classic_arena;
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' + shape + '</svg>';
+
+        return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+    }
+
     function applyBoardTheme(element, theme) {
         const palette = (theme && theme.palette) || {};
         element.dataset.theme = theme && theme.key ? theme.key : 'classic_arena';
@@ -137,6 +153,7 @@
             '--board-accent': palette.accent || '#f97316',
             '--board-snake': palette.snake || '#22c55e',
             '--board-ladder': palette.ladder || '#facc15',
+            '--board-icon': themeIconMaskUrl(theme && theme.key),
         }).forEach(([key, value]) => element.style.setProperty(key, value));
     }
 
