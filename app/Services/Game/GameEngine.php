@@ -52,6 +52,10 @@ class GameEngine
             throw new DomainException('Board template belum tersedia. Jalankan seeder demo lebih dulu.');
         }
 
+        if (isset($options['board_size']) && in_array((int) $options['board_size'], [50, 70], true)) {
+            $board = $this->applyBoardSize($board, (int) $options['board_size']);
+        }
+
         if (isset($options['mystery_tile_count'])) {
             $board = $this->applyMysteryTileCount($board, (int) $options['mystery_tile_count']);
         }
@@ -1433,6 +1437,79 @@ class GameEngine
         }
 
         return null;
+    }
+
+    private const BOARD_SIZE_LAYOUTS = [
+        50 => [
+            'ladders' => [
+                ['from' => 3, 'to' => 9],
+                ['from' => 8, 'to' => 18],
+                ['from' => 14, 'to' => 28],
+                ['from' => 19, 'to' => 34],
+                ['from' => 26, 'to' => 39],
+            ],
+            'snakes' => [
+                ['from' => 12, 'to' => 4],
+                ['from' => 22, 'to' => 11],
+                ['from' => 31, 'to' => 16],
+                ['from' => 42, 'to' => 24],
+                ['from' => 47, 'to' => 32],
+            ],
+            'special_tiles' => [
+                ['tile' => 6, 'type' => 'BONUS', 'points' => 50, 'label' => 'Bonus 50'],
+                ['tile' => 15, 'type' => 'TRAP', 'steps' => 3, 'label' => 'Trap mundur 3'],
+                ['tile' => 21, 'type' => 'SAFE', 'label' => 'Perisai aman'],
+                ['tile' => 30, 'type' => 'MYSTERY', 'label' => 'Misteri'],
+                ['tile' => 37, 'type' => 'BONUS', 'points' => 75, 'label' => 'Bonus 75'],
+            ],
+        ],
+        70 => [
+            'ladders' => [
+                ['from' => 5, 'to' => 14],
+                ['from' => 11, 'to' => 27],
+                ['from' => 18, 'to' => 38],
+                ['from' => 24, 'to' => 45],
+                ['from' => 33, 'to' => 52],
+                ['from' => 41, 'to' => 60],
+            ],
+            'snakes' => [
+                ['from' => 16, 'to' => 6],
+                ['from' => 30, 'to' => 13],
+                ['from' => 47, 'to' => 22],
+                ['from' => 55, 'to' => 31],
+                ['from' => 64, 'to' => 50],
+                ['from' => 68, 'to' => 57],
+            ],
+            'special_tiles' => [
+                ['tile' => 9, 'type' => 'BONUS', 'points' => 50, 'label' => 'Bonus 50'],
+                ['tile' => 20, 'type' => 'TRAP', 'steps' => 3, 'label' => 'Trap mundur 3'],
+                ['tile' => 36, 'type' => 'SAFE', 'label' => 'Perisai aman'],
+                ['tile' => 43, 'type' => 'MYSTERY', 'label' => 'Misteri'],
+                ['tile' => 53, 'type' => 'BONUS', 'points' => 75, 'label' => 'Bonus 75'],
+                ['tile' => 62, 'type' => 'TRAP', 'steps' => 4, 'label' => 'Trap mundur 4'],
+            ],
+        ],
+    ];
+
+    private function applyBoardSize(array $board, int $tileCount): array
+    {
+        $layout = self::BOARD_SIZE_LAYOUTS[$tileCount] ?? null;
+        if ($layout === null) {
+            return $board;
+        }
+
+        $newBoardId = (new BoardTemplateModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'name' => $board['name'] . ' (' . $tileCount . ' Kotak)',
+            'tile_count' => $tileCount,
+            'ladders_json' => json_encode($layout['ladders'], JSON_UNESCAPED_SLASHES),
+            'snakes_json' => json_encode($layout['snakes'], JSON_UNESCAPED_SLASHES),
+            'special_tiles_json' => json_encode($layout['special_tiles'], JSON_UNESCAPED_SLASHES),
+            'theme_json' => $board['theme_json'],
+            'status' => 'ROOM_INSTANCE',
+        ], true);
+
+        return (new BoardTemplateModel())->find($newBoardId);
     }
 
     private function applyMysteryTileCount(array $board, int $mysteryCount): array

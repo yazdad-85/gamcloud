@@ -893,6 +893,69 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame('ACTIVE', (new BoardTemplateModel())->find($usedBoardId)['status']);
     }
 
+    public function testCreateRoomAppliesSelectedBoardSize(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Board Size 70 Test', [
+            'board_size' => 70,
+        ])['room'];
+
+        $usedBoardId = (int) (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
+        $board = (new BoardTemplateModel())->find($usedBoardId);
+
+        $this->assertSame(70, (int) $board['tile_count']);
+        $this->assertSame('ROOM_INSTANCE', $board['status']);
+        $this->assertCount(6, json_decode((string) $board['ladders_json'], true));
+        $this->assertCount(6, json_decode((string) $board['snakes_json'], true));
+        $this->assertCount(6, json_decode((string) $board['special_tiles_json'], true));
+    }
+
+    public function testCreateRoomKeepsDefaultBoardWhenSizeIs100(): void
+    {
+        $sourceBoard = (new BoardTemplateModel())->where('status', 'ACTIVE')->orderBy('id', 'ASC')->first();
+
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Board Size Default Test', [
+            'board_size' => 100,
+        ])['room'];
+
+        $usedBoardId = (int) (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
+        $this->assertSame((int) $sourceBoard['id'], $usedBoardId);
+    }
+
+    public function testCreateRoomComposesBoardSizeAndMysteryTileCount(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Board Size Plus Mystery Test', [
+            'board_size' => 70,
+            'mystery_tile_count' => 4,
+        ])['room'];
+
+        $usedBoardId = (int) (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
+        $board = (new BoardTemplateModel())->find($usedBoardId);
+        $mysteryTiles = array_values(array_filter(
+            json_decode((string) $board['special_tiles_json'], true),
+            static fn (array $tile): bool => $tile['type'] === 'MYSTERY',
+        ));
+
+        $this->assertSame(70, (int) $board['tile_count']);
+        $this->assertCount(4, $mysteryTiles);
+    }
+
+    public function testDeleteRoomRemovesClonedBoardSizeTemplate(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Board Size Cleanup Test', [
+            'board_size' => 50,
+        ])['room'];
+        $usedBoardId = (int) (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
+        $this->assertSame('ROOM_INSTANCE', (new BoardTemplateModel())->find($usedBoardId)['status']);
+
+        $engine->deleteRoom($room['uuid']);
+
+        $this->assertNull((new BoardTemplateModel())->find($usedBoardId));
+    }
+
     private function roomId(string $roomUuid): int
     {
         $room = (new GameRoomModel())->where('public_uuid', $roomUuid)->first();
