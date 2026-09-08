@@ -603,10 +603,19 @@
         drawTeacherControl();
     }
 
+    const SEQUENCED_EVENTS = new Set([
+        'dice.rolled',
+        'answer.resolved',
+        'tile.special_triggered',
+        'mystery.resolved',
+        'game.finished',
+    ]);
+
     function projector(config) {
         const seenEvents = new Set((config.snapshot.events || []).map((event) => event.event_id));
         const overlayQueue = [];
         let overlayBusy = false;
+        let sequenceBusy = Promise.resolve();
 
         createRuntime(Object.assign({interval: 1600}, config, {
             onSnapshot(snapshot) {
@@ -615,14 +624,15 @@
                         return;
                     }
                     seenEvents.add(event.event_id);
+
+                    if (SEQUENCED_EVENTS.has(event.event)) {
+                        sequenceBusy = sequenceBusy.then(() => runSequencedEvent(event, snapshot));
+                        return;
+                    }
+
                     const item = overlayForEvent(event, snapshot);
                     if (item) {
                         overlayQueue.push(item);
-                    }
-                    if (event.event === 'answer.resolved') {
-                        animateMovementEvent(event, snapshot, event.payload.team_uuid);
-                    } else if (event.event === 'mystery.resolved') {
-                        animateMovementEvent(event, snapshot, event.payload.affected_team_uuid);
                     }
                 });
                 playOverlayQueue(overlayQueue, () => overlayBusy, (value) => {
@@ -630,6 +640,112 @@
                 });
             },
         }));
+    }
+
+    function runSequencedEvent(event, snapshot) {
+        switch (event.event) {
+            case 'dice.rolled':
+                return runDiceRolledSequence(event, snapshot);
+            case 'answer.resolved':
+                return runMovementSequence(event, snapshot, event.payload.team_uuid, event.payload.is_correct);
+            case 'tile.special_triggered':
+                return runTileEffectSequence(event, snapshot);
+            case 'mystery.resolved':
+                return runMovementSequence(event, snapshot, event.payload.affected_team_uuid, null);
+            case 'game.finished':
+                return runWinnerSequence(event, snapshot);
+            default:
+                return Promise.resolve();
+        }
+    }
+
+    function runDiceRolledSequence(event, snapshot) {
+        const dieMount = document.querySelector('[data-projector-die]');
+        const panel = document.querySelector('[data-projector-dice-panel]');
+        const label = document.querySelector('[data-projector-die-label]');
+        if (!dieMount || !panel) {
+            return Promise.resolve();
+        }
+
+        if (label) {
+            label.textContent = teamNameByUuid(event.payload.team_uuid, snapshot) + ' melempar dadu...';
+        }
+        panel.classList.remove('hidden');
+
+        return GameFx.rollDie(dieMount, {
+            resultPromise: Promise.resolve(event.payload.dice_value),
+            minDurationMs: 1400,
+        }).then(() => new Promise((resolve) => {
+            window.setTimeout(() => {
+                panel.classList.add('hidden');
+                resolve();
+            }, 700);
+        }));
+    }
+
+    function runMovementSequence(event, snapshot, teamUuid, isCorrectOrNull) {
+        const movement = event.payload && event.payload.movement;
+        const board = document.querySelector('[data-board]');
+        const team = (snapshot.teams || []).find((item) => item.uuid === teamUuid);
+        const hasWalk = Boolean(movement && board && team && Number(movement.from) !== Number(movement.to));
+        const walk = hasWalk ? animateMovementEvent(event, snapshot, teamUuid) : Promise.resolve();
+
+        return walk.then(() => {
+            if (!team || !board) {
+                return null;
+            }
+            if (isCorrectOrNull === null) {
+                return runMysteryBanner(event, snapshot);
+            }
+            const point = viewportTileCenter(board, Number(movement ? movement.to : team.position));
+            if (!point) {
+                return null;
+            }
+            return isCorrectOrNull
+                ? GameFx.celebrateCorrect(point.x, point.y, team.name)
+                : GameFx.celebrateWrong(team.name);
+        });
+    }
+
+    function runMysteryBanner(event, snapshot) {
+        const overlay = overlayForEvent(event, snapshot);
+        if (!overlay) {
+            return Promise.resolve();
+        }
+        const tone = overlay.tone === 'success' ? 'correct' : 'wrong';
+        const icon = overlay.tone === 'success' ? '🎁' : '💥';
+        return GameFx.banner({tone, icon, title: overlay.title, body: overlay.body, durationMs: 2000});
+    }
+
+    function runTileEffectSequence(event, snapshot) {
+        const board = document.querySelector('[data-board]');
+        const payload = event.payload || {};
+        const effect = payload.effect || {};
+        const movement = payload.movement || {};
+        const targetTile = Number(effect.to != null ? effect.to : movement.to);
+        if (!board || !targetTile) {
+            return Promise.resolve();
+        }
+        const point = viewportTileCenter(board, targetTile);
+        if (!point) {
+            return Promise.resolve();
+        }
+        const type = String(effect.type || '').toUpperCase();
+        const overlay = specialOverlay(effect, payload.team_uuid, snapshot);
+        return GameFx.tileEffect(point.x, point.y, type, overlay.body);
+    }
+
+    function runWinnerSequence(event, snapshot) {
+        const board = document.querySelector('[data-board]');
+        const team = (snapshot.teams || []).find((item) => item.uuid === event.payload.winner_team_uuid);
+        if (!board || !team) {
+            return Promise.resolve();
+        }
+        const point = viewportTileCenter(board, Number(team.position));
+        if (!point) {
+            return Promise.resolve();
+        }
+        return GameFx.celebrateWinner(point.x, point.y, team.name);
     }
 
     function movementFeedbackText(payload) {
@@ -658,22 +774,6 @@
                     title: 'Giliran Pertama',
                     body: teamNameByUuid(payload.current_team_uuid, snapshot),
                 };
-            case 'dice.rolled':
-                return {
-                    tone: 'dice',
-                    title: teamNameByUuid(payload.team_uuid, snapshot),
-                    body: 'Dadu ' + payload.dice_value,
-                };
-            case 'answer.resolved': {
-                const feedback = movementFeedbackText(payload);
-                return {
-                    tone: payload.is_correct ? 'success' : 'danger',
-                    title: payload.is_correct ? 'Jawaban Benar' : 'Belum Tepat',
-                    body: feedback ? feedback.body : teamNameByUuid(payload.team_uuid, snapshot),
-                };
-            }
-            case 'tile.special_triggered':
-                return specialOverlay(payload.effect || {}, payload.team_uuid, snapshot);
             case 'mystery.target_chosen':
                 return {
                     tone: 'dice',
@@ -709,12 +809,6 @@
                     tone: 'info',
                     title: 'Giliran Dilewati',
                     body: teamNameByUuid(payload.next_team_uuid, snapshot),
-                };
-            case 'game.finished':
-                return {
-                    tone: 'winner',
-                    title: 'Pemenang',
-                    body: teamNameByUuid(payload.winner_team_uuid, snapshot),
                 };
             default:
                 return null;
