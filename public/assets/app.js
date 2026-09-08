@@ -608,6 +608,10 @@
         'answer.resolved',
         'tile.special_triggered',
         'mystery.resolved',
+        'snake.redemption_started',
+        'snake.redemption_resolved',
+        'ladder.challenge_started',
+        'ladder.challenge_resolved',
         'game.finished',
     ]);
 
@@ -652,6 +656,25 @@
                 return runTileEffectSequence(event, snapshot);
             case 'mystery.resolved':
                 return runMovementSequence(event, snapshot, event.payload.affected_team_uuid, null);
+            case 'snake.redemption_started':
+                return GameFx.banner({
+                    tone: 'trap',
+                    icon: '🐍',
+                    title: 'Ular! Soal penyelamat',
+                    body: teamNameByUuid(event.payload.team_uuid, snapshot),
+                    durationMs: 1800,
+                });
+            case 'ladder.challenge_started':
+                return GameFx.banner({
+                    tone: 'bonus',
+                    icon: '🪜',
+                    title: 'Tangga! Soal klaim',
+                    body: teamNameByUuid(event.payload.team_uuid, snapshot),
+                    durationMs: 1800,
+                });
+            case 'snake.redemption_resolved':
+            case 'ladder.challenge_resolved':
+                return runMovementSequence(event, snapshot, event.payload.team_uuid, event.payload.is_correct);
             case 'game.finished':
                 return runWinnerSequence(event, snapshot);
             default:
