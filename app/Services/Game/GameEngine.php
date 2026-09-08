@@ -631,6 +631,119 @@ class GameEngine
         return $this->snapshot($room['public_uuid']);
     }
 
+    public function answerMystery(string $roomUuid, string $teamUuid, int $optionId, ?string $idempotencyKey = null): array
+    {
+        $room = $this->roomByUuid($roomUuid);
+        $team = $this->teamByUuid($teamUuid, (int) $room['id']);
+        $scope = 'mystery_answer:' . $room['public_uuid'] . ':' . $team['public_uuid'];
+        if ($existing = $this->idempotentResponse($scope, $idempotencyKey)) {
+            return $existing;
+        }
+
+        $turn = $this->activeTurn((int) $room['id']);
+        if ($turn === null || $turn['state'] !== 'MYSTERY_QUESTION_ACTIVE' || (int) $turn['team_id'] !== (int) $team['id']) {
+            throw new DomainException('Tidak ada soal Kotak Misteri yang menunggu jawaban tim ini.');
+        }
+
+        if ($this->isTurnExpired($turn)) {
+            $response = $this->resolveMysteryOutcome($room, $team, $turn, false);
+            $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+            return $response;
+        }
+
+        $option = (new QuestionOptionModel())
+            ->where('question_id', $turn['question_id'])
+            ->where('id', $optionId)
+            ->first();
+        if ($option === null) {
+            throw new DomainException('Pilihan jawaban tidak valid.');
+        }
+
+        $response = $this->resolveMysteryOutcome($room, $team, $turn, (int) $option['is_correct'] === 1);
+        $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+        return $response;
+    }
+
+    private function resolveMysteryOutcome(array $room, array $team, array $turn, bool $isCorrect): array
+    {
+        $maxPosition = (int) $room['max_position'];
+        $targetTeamId = $turn['mystery_target_team_id'] !== null ? (int) $turn['mystery_target_team_id'] : null;
+        $finished = false;
+        $finishedTeamUuid = null;
+
+        if ($isCorrect && $targetTeamId === null) {
+            $newPosition = $this->applyMysteryDeltaToTeam($room, $team, 80, 3, $maxPosition);
+            $outcome = 'REWARD_SELF';
+            $affectedTeamUuid = $team['public_uuid'];
+            if ($newPosition >= $maxPosition) {
+                $finished = true;
+                $finishedTeamUuid = $team['public_uuid'];
+            }
+        } elseif ($isCorrect && $targetTeamId !== null) {
+            $opponent = (new GameTeamModel())->find($targetTeamId);
+            $this->applyMysteryDeltaToTeam($room, $opponent, -60, -4, $maxPosition);
+            $outcome = 'PUNISH_OPPONENT';
+            $affectedTeamUuid = $opponent['public_uuid'];
+        } else {
+            $this->applyMysteryDeltaToTeam($room, $team, -60, -4, $maxPosition);
+            $outcome = 'BOOMERANG_SELF';
+            $affectedTeamUuid = $team['public_uuid'];
+        }
+
+        $this->db->transStart();
+        if ($finished) {
+            (new GameRoomModel())->update($room['id'], [
+                'status' => 'FINISHED',
+                'finished_at' => date('Y-m-d H:i:s'),
+            ]);
+            (new GameTurnModel())->update($turn['id'], [
+                'state' => 'TURN_COMPLETED',
+                'answer_is_correct' => $isCorrect ? 1 : 0,
+            ]);
+        } else {
+            $nextTeam = $this->nextTeam((int) $room['id'], (int) $team['id']);
+            (new GameTurnModel())->update($turn['id'], [
+                'state' => 'TURN_COMPLETED',
+                'answer_is_correct' => $isCorrect ? 1 : 0,
+            ]);
+            (new GameRoomModel())->update($room['id'], [
+                'current_team_id' => $nextTeam['id'],
+            ]);
+            $this->createTurn($room, $nextTeam, ((int) $turn['turn_number']) + 1);
+        }
+        $this->bumpRoom($room['id']);
+        $this->db->transComplete();
+
+        $room = $this->roomById((int) $room['id']);
+        $this->recordEvent($room, 'mystery.resolved', [
+            'team_uuid' => $team['public_uuid'],
+            'affected_team_uuid' => $affectedTeamUuid,
+            'is_correct' => $isCorrect,
+            'outcome' => $outcome,
+        ]);
+        if ($finished) {
+            $this->recordEvent($room, 'game.finished', [
+                'winner_team_uuid' => $finishedTeamUuid,
+            ]);
+        }
+
+        return $this->snapshot($room['public_uuid']);
+    }
+
+    private function applyMysteryDeltaToTeam(array $room, array $team, int $pointsDelta, int $stepsDelta, int $maxPosition): int
+    {
+        $newPosition = max(1, min($maxPosition, (int) $team['position'] + $stepsDelta));
+        (new GameTeamModel())->update($team['id'], [
+            'position' => $newPosition,
+            'score' => (int) $team['score'] + $pointsDelta,
+        ]);
+        $this->recordScore($room, $team, 'SPECIAL_TILE', $pointsDelta, $pointsDelta >= 0 ? 'Bonus Kotak Misteri' : 'Penalti Kotak Misteri');
+
+        return $newPosition;
+    }
+
     public function snapshot(string $roomUuid): array
     {
         $room = $this->roomByUuid($roomUuid);

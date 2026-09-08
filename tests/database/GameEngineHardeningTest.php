@@ -378,6 +378,113 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame(100, $updatedTeam['score']);
     }
 
+    public function testMysteryRewardSelfOnCorrectAnswer(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Reward Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Misteri')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 45, 1);
+        $engine->chooseMysteryTarget($room['uuid'], $team['public_uuid'], 'SELF');
+
+        $turn = (new GameTurnModel())->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
+        $optionId = $this->correctOptionId((int) $turn['question_id']);
+        $snapshot = $engine->answerMystery($room['uuid'], $team['public_uuid'], $optionId);
+        $updatedTeam = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+
+        $this->assertSame(49, $updatedTeam['position']);
+        $this->assertSame(180, $updatedTeam['score']);
+        $this->assertSame('TURN_COMPLETED', (new GameTurnModel())->find($turn['id'])['state']);
+        $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.resolved');
+        $this->assertSame('REWARD_SELF', $lastEvent['payload']['outcome']);
+    }
+
+    public function testMysteryPunishOpponentOnCorrectAnswer(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Punish Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Misteri')['team'];
+        $opponent = $engine->joinByPin($room['pin'], 'Tim Lawan')['team'];
+        (new GameTeamModel())->update($opponent['id'], ['position' => 30, 'score' => 200]);
+
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 45, 1);
+        $engine->chooseMysteryTarget($room['uuid'], $team['public_uuid'], $opponent['public_uuid']);
+
+        $turn = (new GameTurnModel())->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
+        $optionId = $this->correctOptionId((int) $turn['question_id']);
+        $snapshot = $engine->answerMystery($room['uuid'], $team['public_uuid'], $optionId);
+        $updatedOpponent = $this->teamFromSnapshot($snapshot, $opponent['public_uuid']);
+        $updatedTeam = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+
+        $this->assertSame(26, $updatedOpponent['position']);
+        $this->assertSame(140, $updatedOpponent['score']);
+        $this->assertSame(46, $updatedTeam['position']);
+        $this->assertSame(100, $updatedTeam['score']);
+        $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.resolved');
+        $this->assertSame('PUNISH_OPPONENT', $lastEvent['payload']['outcome']);
+        $this->assertSame($opponent['public_uuid'], $lastEvent['payload']['affected_team_uuid']);
+    }
+
+    public function testMysteryBoomerangsToSelfOnWrongAnswer(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Boomerang Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Misteri')['team'];
+        $opponent = $engine->joinByPin($room['pin'], 'Tim Lawan')['team'];
+
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 45, 1);
+        $engine->chooseMysteryTarget($room['uuid'], $team['public_uuid'], $opponent['public_uuid']);
+
+        $turn = (new GameTurnModel())->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
+        $optionId = $this->wrongOptionId((int) $turn['question_id']);
+        $snapshot = $engine->answerMystery($room['uuid'], $team['public_uuid'], $optionId);
+        $updatedTeam = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+        $updatedOpponent = $this->teamFromSnapshot($snapshot, $opponent['public_uuid']);
+
+        $this->assertSame(42, $updatedTeam['position']);
+        $this->assertSame(40, $updatedTeam['score']);
+        $this->assertSame(1, $updatedOpponent['position']);
+        $this->assertSame(0, $updatedOpponent['score']);
+        $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.resolved');
+        $this->assertSame('BOOMERANG_SELF', $lastEvent['payload']['outcome']);
+    }
+
+    public function testMysteryQuestionTimeoutBoomerangsToSelf(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Question Timeout Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Misteri')['team'];
+
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 45, 1);
+        $engine->chooseMysteryTarget($room['uuid'], $team['public_uuid'], 'SELF');
+
+        $turns = new GameTurnModel();
+        $turn = $turns->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
+        $turns->update($turn['id'], [
+            'question_deadline_at' => date('Y-m-d H:i:s', time() - 5),
+        ]);
+
+        $optionId = $this->firstOptionId((int) $turn['question_id']);
+        $snapshot = $engine->answerMystery($room['uuid'], $team['public_uuid'], $optionId);
+        $updatedTeam = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+
+        $this->assertSame(42, $updatedTeam['position']);
+        $this->assertSame(40, $updatedTeam['score']);
+        $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.resolved');
+        $this->assertSame('BOOMERANG_SELF', $lastEvent['payload']['outcome']);
+    }
+
     public function testDuelTileIsHiddenAndActsAsNormalTile(): void
     {
         $engine = new GameEngine();
