@@ -20,6 +20,7 @@ class GameTurnModel extends Model
         'question_started_at',
         'question_deadline_at',
         'answer_is_correct',
+        'mystery_target_team_id',
     ];
     protected $useTimestamps = true;
 }
