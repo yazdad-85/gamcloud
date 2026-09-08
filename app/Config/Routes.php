@@ -35,6 +35,7 @@ $routes->post('teacher/games/(:segment)/delete', 'Teacher\GameController::delete
 $routes->get('teacher/games/(:segment)', 'Teacher\GameController::show/$1', ['filter' => 'teacherAccess']);
 $routes->get('teacher/games/(:segment)/control', 'Teacher\GameController::control/$1', ['filter' => 'teacherAccess']);
 $routes->get('teacher/games/(:segment)/report', 'Teacher\ReportController::show/$1', ['filter' => 'teacherAccess']);
+$routes->get('teacher/games/(:segment)/report/pdf', 'Teacher\ReportController::pdf/$1', ['filter' => 'teacherAccess']);
 
 $routes->get('superadmin', 'Superadmin\DashboardController::index', ['filter' => 'superadminAccess']);
 $routes->get('superadmin/teachers', 'Superadmin\TeacherController::index', ['filter' => 'superadminAccess']);
