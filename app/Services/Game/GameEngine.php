@@ -315,7 +315,9 @@ class GameEngine
         }
 
         $turn = $this->activeTurn((int) $room['id']);
-        if ($turn === null || $turn['state'] !== 'QUESTION_ACTIVE') {
+        $challengeStates = ['SNAKE_REDEMPTION_ACTIVE', 'LADDER_CHALLENGE_ACTIVE'];
+        $timeoutStates = array_merge(['QUESTION_ACTIVE'], $challengeStates);
+        if ($turn === null || ! in_array($turn['state'], $timeoutStates, true)) {
             throw new DomainException('Tidak ada pertanyaan aktif untuk dipaksa timeout.');
         }
 
@@ -324,7 +326,11 @@ class GameEngine
             throw new DomainException('Tim aktif tidak ditemukan.');
         }
 
-        $this->resolveTimedOutTurn($room, $team, $turn);
+        if (in_array($turn['state'], $challengeStates, true)) {
+            $this->resolveBoardChallengeTimeout($room, $team, $turn);
+        } else {
+            $this->resolveTimedOutTurn($room, $team, $turn);
+        }
         $room = $this->roomByUuid($roomUuid);
         $this->recordEvent($room, 'teacher.override', ['action' => 'force_timeout']);
 
@@ -846,6 +852,178 @@ class GameEngine
         $this->recordScore($room, $team, 'SPECIAL_TILE', $pointsDelta, $pointsDelta >= 0 ? 'Bonus Kotak Misteri' : 'Penalti Kotak Misteri');
 
         return $newPosition;
+    }
+
+    public function answerBoardChallenge(string $roomUuid, string $teamUuid, int $optionId, ?string $idempotencyKey = null): array
+    {
+        $room = $this->roomByUuid($roomUuid);
+        $this->assertRoomNotExpired($room, 'Room sudah kedaluwarsa. Permainan tidak bisa dilanjutkan.');
+        $team = $this->teamByUuid($teamUuid, (int) $room['id']);
+        $scope = 'board-challenge:' . $room['public_uuid'] . ':' . $team['public_uuid'];
+        if ($existing = $this->idempotentResponse($scope, $idempotencyKey)) {
+            return $existing;
+        }
+
+        if ($room['status'] !== 'PLAYING') {
+            throw new DomainException('Game belum dalam status PLAYING.');
+        }
+        if ((int) $room['current_team_id'] !== (int) $team['id']) {
+            throw new DomainException('Belum giliran tim ini.');
+        }
+
+        $turn = $this->activeTurn((int) $room['id']);
+        $allowed = ['SNAKE_REDEMPTION_ACTIVE', 'LADDER_CHALLENGE_ACTIVE'];
+        if ($turn === null || ! in_array($turn['state'], $allowed, true)) {
+            throw new DomainException('Tidak ada tantangan ular/tangga aktif.');
+        }
+
+        if ($this->isTurnExpired($turn)) {
+            $response = $this->resolveBoardChallengeTimeout($room, $team, $turn);
+            $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+            return $response;
+        }
+
+        $option = (new QuestionOptionModel())
+            ->where('question_id', $turn['question_id'])
+            ->where('id', $optionId)
+            ->first();
+        if ($option === null) {
+            throw new DomainException('Pilihan jawaban tidak valid.');
+        }
+
+        $response = $this->finalizeBoardChallenge(
+            $room,
+            $team,
+            $turn,
+            (int) $option['is_correct'] === 1,
+            $option
+        );
+        $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+        return $response;
+    }
+
+    private function boardChallengeTarget(int $from, string $kind, array $board): int
+    {
+        $key = $kind === 'SNAKE' ? 'snakes_json' : 'ladders_json';
+        foreach (json_decode((string) $board[$key], true) ?: [] as $item) {
+            if ((int) $item['from'] === $from) {
+                return (int) $item['to'];
+            }
+        }
+
+        throw new DomainException('Target ular/tangga tidak ditemukan di papan.');
+    }
+
+    private function resolveBoardChallengeTimeout(array $room, array $team, array $turn): array
+    {
+        return $this->finalizeBoardChallenge($room, $team, $turn, false, null);
+    }
+
+    private function finalizeBoardChallenge(
+        array $room,
+        array $team,
+        array $turn,
+        bool $isCorrect,
+        ?array $option
+    ): array {
+        $kind = $turn['state'] === 'SNAKE_REDEMPTION_ACTIVE' ? 'SNAKE' : 'LADDER';
+        $board = (new BoardTemplateModel())->find($room['board_template_id']);
+        $from = (int) $team['position'];
+        $challengeTo = $this->boardChallengeTarget($from, $kind, $board);
+        $to = $isCorrect
+            ? ($kind === 'LADDER' ? $challengeTo : $from)
+            : ($kind === 'SNAKE' ? $challengeTo : $from);
+        $points = $isCorrect ? ($kind === 'SNAKE' ? 75 : 150) : 0;
+
+        $this->db->transStart();
+        (new GameAnswerModel())->insert([
+            'turn_id' => $turn['id'],
+            'team_id' => $team['id'],
+            'question_id' => $turn['question_id'],
+            'option_id' => $option['id'] ?? null,
+            'answer_text' => $option['body'] ?? null,
+            'is_correct' => $isCorrect ? 1 : 0,
+            'answered_at' => date('Y-m-d H:i:s'),
+            'response_ms' => $this->responseMs($turn),
+        ]);
+        (new GameTeamModel())->update($team['id'], [
+            'position' => $to,
+            'score' => (int) $team['score'] + $points,
+        ]);
+        if ($points !== 0) {
+            $this->recordScore(
+                $room,
+                $team,
+                $kind === 'SNAKE' ? 'SNAKE_REDEMPTION' : 'LADDER_CHALLENGE',
+                $points,
+                $kind === 'SNAKE' ? 'Lolos ular' : 'Naik tangga'
+            );
+        }
+
+        $finished = $to >= (int) $room['max_position'];
+        if ($finished) {
+            (new GameRoomModel())->update($room['id'], [
+                'status' => 'FINISHED',
+                'finished_at' => date('Y-m-d H:i:s'),
+            ]);
+            (new GameTurnModel())->update($turn['id'], [
+                'state' => 'TURN_COMPLETED',
+                'answer_is_correct' => $isCorrect ? 1 : 0,
+            ]);
+        } else {
+            $nextTeam = $this->nextTeam((int) $room['id'], (int) $team['id']);
+            (new GameTurnModel())->update($turn['id'], [
+                'state' => 'TURN_COMPLETED',
+                'answer_is_correct' => $isCorrect ? 1 : 0,
+            ]);
+            (new GameRoomModel())->update($room['id'], ['current_team_id' => $nextTeam['id']]);
+            $this->createTurn($room, $nextTeam, ((int) $turn['turn_number']) + 1);
+        }
+        $this->bumpRoom($room['id']);
+        $this->db->transComplete();
+
+        $room = $this->roomById((int) $room['id']);
+        $eventName = $kind === 'SNAKE' ? 'snake.redemption_resolved' : 'ladder.challenge_resolved';
+        $movement = ['from' => $from, 'landed' => $from, 'to' => $to];
+        $this->recordEvent($room, $eventName, [
+            'team_uuid' => $team['public_uuid'],
+            'is_correct' => $isCorrect,
+            'points' => $points,
+            'movement' => $movement,
+        ]);
+        if ($kind === 'SNAKE' && ! $isCorrect) {
+            $this->recordEvent($room, 'tile.special_triggered', [
+                'team_uuid' => $team['public_uuid'],
+                'effect' => [
+                    'type' => 'SNAKE',
+                    'tile' => $from,
+                    'to' => $to,
+                    'label' => 'Ular',
+                ],
+                'movement' => $movement,
+            ]);
+        }
+        if ($kind === 'LADDER' && $isCorrect) {
+            $this->recordEvent($room, 'tile.special_triggered', [
+                'team_uuid' => $team['public_uuid'],
+                'effect' => [
+                    'type' => 'LADDER',
+                    'tile' => $from,
+                    'to' => $to,
+                    'label' => 'Tangga',
+                ],
+                'movement' => $movement,
+            ]);
+        }
+        if ($finished) {
+            $this->recordEvent($room, 'game.finished', [
+                'winner_team_uuid' => $team['public_uuid'],
+            ]);
+        }
+
+        return $this->snapshot($room['public_uuid']);
     }
 
     public function snapshot(string $roomUuid): array

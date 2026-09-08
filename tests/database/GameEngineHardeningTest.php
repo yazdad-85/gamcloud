@@ -420,6 +420,148 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame($team['public_uuid'], $started['payload']['team_uuid']);
     }
 
+    public function testSnakeRedemptionCorrectStaysOnHead(): void
+    {
+        $this->seedHardQuestion(1);
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Snake Save', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Selamat')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 16, 1);
+
+        $turn = (new GameTurnModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->orderBy('id', 'DESC')
+            ->first();
+        $snapshot = $engine->answerBoardChallenge(
+            $room['uuid'],
+            $team['public_uuid'],
+            $this->correctOptionId((int) $turn['question_id'])
+        );
+        $updated = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+        $this->assertSame(17, $updated['position']);
+        $tx = (new ScoreTransactionModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->where('type', 'SNAKE_REDEMPTION')
+            ->first();
+        $this->assertNotNull($tx);
+        $this->assertSame(75, (int) $tx['points']);
+        $resolved = $this->lastEvent($this->roomId($room['uuid']), 'snake.redemption_resolved');
+        $this->assertTrue($resolved['payload']['is_correct']);
+        $this->assertSame(['from' => 17, 'landed' => 17, 'to' => 17], $resolved['payload']['movement']);
+    }
+
+    public function testSnakeRedemptionWrongSlidesToTail(): void
+    {
+        $this->seedHardQuestion(1);
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Snake Fail', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Turun')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 16, 1);
+        $turn = (new GameTurnModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->orderBy('id', 'DESC')
+            ->first();
+        $snapshot = $engine->answerBoardChallenge(
+            $room['uuid'],
+            $team['public_uuid'],
+            $this->wrongOptionId((int) $turn['question_id'])
+        );
+        $updated = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+        $this->assertSame(7, $updated['position']);
+        $resolved = $this->lastEvent($this->roomId($room['uuid']), 'snake.redemption_resolved');
+        $this->assertFalse($resolved['payload']['is_correct']);
+        $this->assertSame(['from' => 17, 'landed' => 17, 'to' => 7], $resolved['payload']['movement']);
+        $special = $this->lastEvent($this->roomId($room['uuid']), 'tile.special_triggered');
+        $this->assertSame('SNAKE', $special['payload']['effect']['type']);
+        $this->assertSame(7, $special['payload']['effect']['to']);
+    }
+
+    public function testLadderChallengeCorrectClimbs(): void
+    {
+        $this->seedHardQuestion(1);
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Ladder Up', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Naik')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 3, 1);
+        $turn = (new GameTurnModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->orderBy('id', 'DESC')
+            ->first();
+        $snapshot = $engine->answerBoardChallenge(
+            $room['uuid'],
+            $team['public_uuid'],
+            $this->correctOptionId((int) $turn['question_id'])
+        );
+        $updated = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+        $this->assertSame(14, $updated['position']);
+        $tx = (new ScoreTransactionModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->where('type', 'LADDER_CHALLENGE')
+            ->first();
+        $this->assertNotNull($tx);
+        $this->assertSame(150, (int) $tx['points']);
+        $resolved = $this->lastEvent($this->roomId($room['uuid']), 'ladder.challenge_resolved');
+        $this->assertTrue($resolved['payload']['is_correct']);
+        $this->assertSame(['from' => 4, 'landed' => 4, 'to' => 14], $resolved['payload']['movement']);
+        $special = $this->lastEvent($this->roomId($room['uuid']), 'tile.special_triggered');
+        $this->assertSame('LADDER', $special['payload']['effect']['type']);
+        $this->assertSame(14, $special['payload']['effect']['to']);
+    }
+
+    public function testLadderChallengeWrongStaysAtBase(): void
+    {
+        $this->seedHardQuestion(1);
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Ladder Fail', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Gagal')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 3, 1);
+        $turn = (new GameTurnModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->orderBy('id', 'DESC')
+            ->first();
+        $snapshot = $engine->answerBoardChallenge(
+            $room['uuid'],
+            $team['public_uuid'],
+            $this->wrongOptionId((int) $turn['question_id'])
+        );
+        $updated = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+        $this->assertSame(4, $updated['position']);
+        $resolved = $this->lastEvent($this->roomId($room['uuid']), 'ladder.challenge_resolved');
+        $this->assertFalse($resolved['payload']['is_correct']);
+        $this->assertSame(['from' => 4, 'landed' => 4, 'to' => 4], $resolved['payload']['movement']);
+    }
+
+    public function testSnakeRedemptionTimeoutSlidesToTail(): void
+    {
+        $this->seedHardQuestion(1);
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Snake Timeout', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Timeout')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 16, 1);
+
+        $snapshot = $engine->forceTimeout($room['uuid']);
+        $updated = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
+        $this->assertSame(7, $updated['position']);
+        $resolved = $this->lastEvent($this->roomId($room['uuid']), 'snake.redemption_resolved');
+        $this->assertFalse($resolved['payload']['is_correct']);
+        $this->assertSame(['from' => 17, 'landed' => 17, 'to' => 7], $resolved['payload']['movement']);
+    }
+
     public function testMysteryLandingDefersToChoicePendingState(): void
     {
         $engine = new GameEngine();
