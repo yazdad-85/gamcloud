@@ -3,6 +3,7 @@
 use App\Database\Seeds\DemoGameSeeder;
 use App\Models\QuestionModel;
 use App\Models\QuestionOptionModel;
+use App\Models\QuestionTopicModel;
 use App\Services\Question\DocxQuestionImportService;
 use App\Services\Question\DocxQuestionTemplateService;
 use CodeIgniter\Test\CIUnitTestCase;
@@ -79,6 +80,41 @@ final class DocxQuestionImportServiceTest extends CIUnitTestCase
         // Fixture has 3 imported questions: #1 has [EASY] (explicit),
         // #2 and #3 only have [TRUE_FALSE] (difficulty defaults to MEDIUM, not explicit).
         $this->assertSame(2, $result['difficulty_unspecified']);
+    }
+
+    public function testImportDocxTagsQuestionsWithGivenTopicId(): void
+    {
+        $topicId = (new QuestionTopicModel())->insert([
+            'public_uuid' => \App\Services\Game\Uuid::v4(),
+            'owner_teacher_id' => 1,
+            'name' => 'Topik Uji',
+        ], true);
+
+        $path = $this->makeDocxFixture();
+        $result = (new DocxQuestionImportService())->import($path, 1, $topicId);
+        $this->pathsToClean[] = rtrim(FCPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . 'uploads/question-imports/1/' . $result['batch_uuid'];
+
+        $imported = (new QuestionModel())->where('owner_teacher_id', 1)->findAll();
+        $taggedCount = count(array_filter(
+            $imported,
+            static fn (array $question): bool => (int) ($question['topic_id'] ?? 0) === $topicId,
+        ));
+
+        $this->assertSame(3, $taggedCount);
+    }
+
+    public function testImportDocxWithoutTopicLeavesQuestionsUntagged(): void
+    {
+        $path = $this->makeDocxFixture();
+        $result = (new DocxQuestionImportService())->import($path, 1);
+        $this->pathsToClean[] = rtrim(FCPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . 'uploads/question-imports/1/' . $result['batch_uuid'];
+
+        $imported = (new QuestionModel())->where('owner_teacher_id', 1)->findAll();
+        foreach ($imported as $question) {
+            $this->assertNull($question['topic_id']);
+        }
     }
 
     public function testTemplateServiceBuildsValidDocx(): void

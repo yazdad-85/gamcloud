@@ -22,7 +22,7 @@ class DocxQuestionImportService
     ];
     private int $skippedQuestions = 0;
 
-    public function import(string $docxPath, int $teacherId): array
+    public function import(string $docxPath, int $teacherId, ?int $topicId = null): array
     {
         $this->skippedQuestions = 0;
 
@@ -46,7 +46,7 @@ class DocxQuestionImportService
             $paragraphs = $this->paragraphs($documentXml, $relationships, $zip, $teacherId, $batchUuid);
             $parsed = $this->parseQuestions($paragraphs);
 
-            return $this->persist($parsed, $teacherId, $batchUuid, $this->skippedQuestions);
+            return $this->persist($parsed, $teacherId, $batchUuid, $this->skippedQuestions, $topicId);
         } finally {
             $zip->close();
         }
@@ -298,7 +298,7 @@ class DocxQuestionImportService
         return $question;
     }
 
-    private function persist(array $questions, int $teacherId, string $batchUuid, int $skipped): array
+    private function persist(array $questions, int $teacherId, string $batchUuid, int $skipped, ?int $topicId = null): array
     {
         $questionModel = new QuestionModel();
         $optionModel = new QuestionOptionModel();
@@ -309,6 +309,7 @@ class DocxQuestionImportService
             $questionId = $questionModel->insert([
                 'public_uuid' => Uuid::v4(),
                 'owner_teacher_id' => $teacherId,
+                'topic_id' => $topicId,
                 'source_type' => 'PERSONAL',
                 'question_type' => $question['type'],
                 'stem' => $question['stem'],
