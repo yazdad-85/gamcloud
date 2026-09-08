@@ -686,6 +686,35 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame((int) $sourceBoard['id'], (int) $usedBoardId);
     }
 
+    public function testDeleteRoomRemovesItsClonedMysteryBoardTemplate(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Cleanup Test', [
+            'mystery_tile_count' => 4,
+        ])['room'];
+        $usedBoardId = (int) (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
+        $this->assertSame('ROOM_INSTANCE', (new BoardTemplateModel())->find($usedBoardId)['status']);
+
+        $engine->deleteRoom($room['uuid']);
+
+        $this->assertNull((new BoardTemplateModel())->find($usedBoardId));
+    }
+
+    public function testDeleteRoomKeepsSharedActiveBoardTemplate(): void
+    {
+        $sourceBoard = (new BoardTemplateModel())->where('status', 'ACTIVE')->orderBy('id', 'ASC')->first();
+
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Shared Board Cleanup Test')['room'];
+        $usedBoardId = (int) (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
+        $this->assertSame((int) $sourceBoard['id'], $usedBoardId);
+
+        $engine->deleteRoom($room['uuid']);
+
+        $this->assertNotNull((new BoardTemplateModel())->find($usedBoardId));
+        $this->assertSame('ACTIVE', (new BoardTemplateModel())->find($usedBoardId)['status']);
+    }
+
     private function roomId(string $roomUuid): int
     {
         $room = (new GameRoomModel())->where('public_uuid', $roomUuid)->first();

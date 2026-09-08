@@ -574,6 +574,7 @@ class GameEngine
             static fn (array $turn): int => (int) $turn['id'],
             (new GameTurnModel())->select('id')->where('room_id', $room['id'])->findAll(),
         );
+        $board = (new BoardTemplateModel())->find($room['board_template_id']);
 
         $this->db->transStart();
 
@@ -593,6 +594,9 @@ class GameEngine
             ->groupEnd()
             ->delete();
         $this->db->table('game_rooms')->where('id', $room['id'])->delete();
+        if ($board !== null && $board['status'] === 'ROOM_INSTANCE') {
+            $this->db->table('board_templates')->where('id', $board['id'])->delete();
+        }
 
         $this->db->transComplete();
     }
