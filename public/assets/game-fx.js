@@ -253,8 +253,11 @@
         return el;
     }
 
+    var fxBannerToken = 0;
+
     function showFxBanner(opts) {
         var el = fxBannerEl();
+        var token = ++fxBannerToken;
         el.className = 'fx-banner fx-banner-' + opts.tone;
         el.innerHTML = '<span class="fx-banner-icon">' + opts.icon + '</span>' +
             '<strong>' + escapeHtml(opts.title) + '</strong>' +
@@ -262,7 +265,9 @@
 
         return new Promise(function (resolve) {
             window.setTimeout(function () {
-                el.classList.add('hidden');
+                if (token === fxBannerToken) {
+                    el.classList.add('hidden');
+                }
                 resolve();
             }, opts.durationMs || 2000);
         });
@@ -335,6 +340,73 @@
         });
     }
 
+    var TILE_EFFECT_STYLE = {
+        BONUS: {icon: ICONS.bonus, tone: 'bonus', sound: 'bonus'},
+        TRAP: {icon: ICONS.trap, tone: 'trap', sound: 'trap'},
+        MYSTERY: {icon: ICONS.mystery, tone: 'mystery', sound: 'mystery'},
+        SAFE: {icon: ICONS.shield, tone: 'safe', sound: 'safe'},
+        SAFE_BLOCK: {icon: ICONS.shield, tone: 'safe', sound: 'safe'},
+    };
+
+    function tileEffect(x, y, type, label) {
+        var style = TILE_EFFECT_STYLE[String(type || '').toUpperCase()];
+        if (!style) {
+            return Promise.resolve();
+        }
+        playSoundSafe(style.sound);
+        return burstIcon(x, y, style.icon, style.tone).then(function () {
+            return showFxBanner({
+                tone: style.tone,
+                icon: style.icon,
+                title: label,
+                durationMs: 1400,
+            });
+        });
+    }
+
+    function celebrateCorrect(x, y, teamName) {
+        playSoundSafe('correct');
+        var confettiDone = confettiBurst(x, y, 36);
+        return showFxBanner({
+            tone: 'correct',
+            icon: ICONS.check,
+            title: 'Jawaban Benar',
+            body: teamName,
+            durationMs: 2200,
+        }).then(function () {
+            return confettiDone;
+        });
+    }
+
+    function celebrateWrong(teamName) {
+        playSoundSafe('wrong');
+        flashScreen('danger');
+        return showFxBanner({
+            tone: 'wrong',
+            icon: ICONS.cross,
+            title: 'Belum Tepat',
+            body: teamName,
+            durationMs: 1500,
+        });
+    }
+
+    function celebrateWinner(x, y, teamName) {
+        playSoundSafe('winner');
+        var confettiDone = Promise.all([
+            confettiBurst(x, y, 50),
+            confettiBurst(window.innerWidth / 2, window.innerHeight * 0.25, 50),
+        ]);
+        return showFxBanner({
+            tone: 'winner',
+            icon: ICONS.winner,
+            title: 'Pemenang',
+            body: teamName,
+            durationMs: 4000,
+        }).then(function () {
+            return confettiDone;
+        });
+    }
+
     window.GameFx = {
         sound: {
             unlock: unlockSound,
@@ -344,5 +416,9 @@
         rollDie: rollDie,
         confettiBurst: confettiBurst,
         banner: showFxBanner,
+        tileEffect: tileEffect,
+        celebrateCorrect: celebrateCorrect,
+        celebrateWrong: celebrateWrong,
+        celebrateWinner: celebrateWinner,
     };
 })();
