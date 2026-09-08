@@ -1,0 +1,52 @@
+.fx-sound-unlock {
+    align-items: center;
+    background: rgba(9, 17, 31, .92);
+    color: #fff;
+    display: grid;
+    inset: 0;
+    justify-items: center;
+    place-content: center;
+    position: fixed;
+    text-align: center;
+    z-index: 60;
+}
+
+.fx-sound-unlock.hidden {
+    display: none;
+}
+
+.fx-sound-unlock button {
+    background: #2563eb;
+    border: none;
+    border-radius: 999px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 22px;
+    font-weight: 800;
+    padding: 18px 34px;
+}
+
+.fx-sound-unlock p {
+    font-size: 15px;
+    margin: 0 0 14px;
+    opacity: .85;
+}
+
+.fx-dice-panel {
+    align-items: center;
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+    margin-top: 14px;
+}
+
+.fx-dice-panel.hidden {
+    display: none;
+}
+
+.fx-dice-panel p {
+    color: #f8fafc;
+    font-size: 18px;
+    font-weight: 800;
+    margin: 0;
+}

@@ -2,10 +2,18 @@
 
 <?= $this->section('content') ?>
 <?php $room = $snapshot['room']; ?>
+<div class="fx-sound-unlock" data-fx-sound-unlock>
+    <p>Ketuk untuk mengaktifkan suara efek permainan</p>
+    <button type="button" data-fx-sound-unlock-button>🔊 Aktifkan Suara</button>
+</div>
 <div class="projector-grid">
     <section>
         <div class="board" data-board></div>
         <div class="projector-event-overlay hidden" data-event-overlay></div>
+        <div class="fx-dice-panel hidden" data-projector-dice-panel>
+            <div class="fx-die-mount" data-projector-die></div>
+            <p data-projector-die-label></p>
+        </div>
     </section>
     <aside class="grid">
         <div class="panel">
@@ -38,6 +46,15 @@
 UlarTangga.projector({
     roomUuid: <?= json_encode($room['uuid']) ?>,
     snapshot: <?= json_encode($snapshot, JSON_UNESCAPED_SLASHES) ?>
+});
+
+document.querySelectorAll('[data-fx-sound-unlock-button]').forEach(function (button) {
+    button.addEventListener('click', function () {
+        if (window.GameFx && GameFx.sound && GameFx.sound.unlock) {
+            GameFx.sound.unlock();
+        }
+        button.closest('[data-fx-sound-unlock]').classList.add('hidden');
+    });
 });
 </script>
 <?= $this->endSection() ?>
