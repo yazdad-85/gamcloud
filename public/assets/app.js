@@ -111,6 +111,7 @@
                 tile === 1 ? 'tile-start' : '',
                 tile === total ? 'tile-finish' : '',
                 special ? 'tile-has-special' : '',
+                (!special && tile !== 1 && tile !== total && tile % 6 === 3) ? 'tile-theme-icon' : '',
                 (teamsByPosition[tile] || []).some((team) => team.uuid === currentTeamUuid) ? 'tile-current' : '',
                 recentMovement && (recentMovement.from === tile || recentMovement.to === tile || recentMovement.landed === tile) ? 'tile-recent' : '',
             ].filter(Boolean).join(' ');
