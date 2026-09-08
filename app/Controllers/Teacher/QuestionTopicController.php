@@ -19,12 +19,12 @@ class QuestionTopicController extends BaseController
             : $tenant->teacherId();
 
         if ($teacherId < 1 || (new TeacherModel())->find($teacherId) === null) {
-            return redirect()->back()->with('error', 'Pilih guru pemilik topik yang valid.');
+            return redirect()->back()->withInput()->with('error', 'Pilih guru pemilik topik yang valid.');
         }
 
         $name = trim((string) $this->request->getPost('name'));
         if ($name === '') {
-            return redirect()->back()->with('error', 'Nama topik wajib diisi.');
+            return redirect()->back()->withInput()->with('error', 'Nama topik wajib diisi.');
         }
         if (strlen($name) > 140) {
             $name = substr($name, 0, 140);

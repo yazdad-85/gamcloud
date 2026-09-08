@@ -38,7 +38,17 @@
     <form class="form" method="post" action="/teacher/topics" style="margin-top:12px">
         <?= csrf_field() ?>
         <?php if (! empty($isSuperadmin)): ?>
-            <input type="hidden" name="owner_teacher_id" value="<?= esc((string) old('owner_teacher_id')) ?>">
+            <div class="field">
+                <label for="topic_owner_teacher_id">Guru Pemilik Topik</label>
+                <select id="topic_owner_teacher_id" name="owner_teacher_id" required>
+                    <option value="">Pilih guru</option>
+                    <?php foreach ($teachers as $teacher): ?>
+                        <option value="<?= esc((string) $teacher['id']) ?>" <?= old('owner_teacher_id') == $teacher['id'] ? 'selected' : '' ?>>
+                            <?= esc($teacher['name']) ?><?= $teacher['email'] ? ' - ' . esc($teacher['email']) : '' ?>
+                        </option>
+                    <?php endforeach ?>
+                </select>
+            </div>
         <?php endif ?>
         <div class="field">
             <label for="topic_name">Topik Baru</label>
