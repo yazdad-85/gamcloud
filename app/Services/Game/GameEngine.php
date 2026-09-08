@@ -475,9 +475,17 @@ class GameEngine
             $this->recordScore($room, $team, 'SPECIAL_TILE', $specialPoints, $specialPoints > 0 ? 'Bonus tile khusus' : 'Penalti tile khusus');
         }
 
-        $finished = $to >= (int) $room['max_position'];
+        $isMysteryLanding = $isCorrect && ($movement['special'] ?? null) === 'MYSTERY';
+        $finished = ! $isMysteryLanding && $to >= (int) $room['max_position'];
         $nextTeam = null;
-        if ($finished) {
+        if ($isMysteryLanding) {
+            (new GameTurnModel())->update($turn['id'], [
+                'state' => 'MYSTERY_CHOICE_PENDING',
+                'answer_is_correct' => 1,
+                'question_started_at' => date('Y-m-d H:i:s'),
+                'question_deadline_at' => date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']),
+            ]);
+        } elseif ($finished) {
             (new GameRoomModel())->update($room['id'], [
                 'status' => 'FINISHED',
                 'finished_at' => date('Y-m-d H:i:s'),
@@ -830,68 +838,18 @@ class GameEngine
         }
 
         if ($type === 'MYSTERY') {
-            return $this->applyMysteryEffect($position, $label, $maxPosition, $activeEffects);
+            return [
+                'to' => $position,
+                'special' => 'MYSTERY',
+                'effects' => [],
+                'score_delta' => 0,
+            ];
         }
 
         return [
             'to' => $position,
             'special' => null,
             'effects' => [],
-            'score_delta' => 0,
-        ];
-    }
-
-    private function applyMysteryEffect(int $position, string $label, int $maxPosition, array &$activeEffects): array
-    {
-        $choice = random_int(1, 3);
-        if ($choice === 1) {
-            $points = 35;
-
-            return [
-                'to' => $position,
-                'special' => 'MYSTERY',
-                'effects' => [[
-                    'type' => 'MYSTERY',
-                    'subtype' => 'BONUS',
-                    'tile' => $position,
-                    'points' => $points,
-                    'label' => $label . ': bonus',
-                ]],
-                'score_delta' => $points,
-            ];
-        }
-
-        if ($choice === 2) {
-            $steps = 2;
-            $to = max(1, min($maxPosition, $position - $steps));
-
-            return [
-                'to' => $to,
-                'special' => 'MYSTERY',
-                'effects' => [[
-                    'type' => 'MYSTERY',
-                    'subtype' => 'TRAP',
-                    'tile' => $position,
-                    'steps' => $steps,
-                    'to' => $to,
-                    'label' => $label . ': mundur',
-                ]],
-                'score_delta' => 0,
-            ];
-        }
-
-        $activeEffects['safe_shield'] = min(3, (int) ($activeEffects['safe_shield'] ?? 0) + 1);
-
-        return [
-            'to' => $position,
-            'special' => 'MYSTERY',
-            'effects' => [[
-                'type' => 'MYSTERY',
-                'subtype' => 'SAFE',
-                'tile' => $position,
-                'safe_shield' => (int) $activeEffects['safe_shield'],
-                'label' => $label . ': perisai',
-            ]],
             'score_delta' => 0,
         ];
     }

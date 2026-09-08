@@ -287,10 +287,10 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame(7, $lastSpecial['payload']['effect']['blocked_to']);
     }
 
-    public function testMysteryTileTriggersServerChosenEffect(): void
+    public function testMysteryLandingDefersToChoicePendingState(): void
     {
         $engine = new GameEngine();
-        $room = $engine->createRoom(1, 'Mystery Tile Test', [
+        $room = $engine->createRoom(1, 'Mystery Pending Test', [
             'turn_order_mode' => 'join_order',
             'scoring' => $this->noScoring(),
         ])['room'];
@@ -298,13 +298,11 @@ final class GameEngineHardeningTest extends CIUnitTestCase
 
         $snapshot = $this->answerCorrectWithForcedMove($engine, $room, $team, 45, 1);
         $updatedTeam = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
-        $lastSpecial = $this->lastEvent($this->roomId($room['uuid']), 'tile.special_triggered');
-        $effect = $lastSpecial['payload']['effect'];
 
-        $this->assertSame('MYSTERY', $effect['type']);
-        $this->assertContains($effect['subtype'], ['BONUS', 'TRAP', 'SAFE']);
-        $this->assertContains($updatedTeam['position'], [44, 46]);
-        $this->assertContains($updatedTeam['score'], [100, 135]);
+        $this->assertSame(46, $updatedTeam['position']);
+        $this->assertSame(100, $updatedTeam['score']);
+        $this->assertSame('MYSTERY_CHOICE_PENDING', $snapshot['current_turn']['state']);
+        $this->assertSame($team['public_uuid'], $snapshot['current_turn']['team_uuid']);
     }
 
     public function testDuelTileIsHiddenAndActsAsNormalTile(): void
