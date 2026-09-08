@@ -331,7 +331,8 @@ class GameEngine
         }
 
         $dice = random_int(1, 6);
-        $targetDifficulty = $this->targetDifficultyForTurn($room, (int) $team['position']);
+        $landedTile = $this->computeLandedTile((int) $team['position'], $dice, $room);
+        $targetDifficulty = $this->targetDifficultyForTurn($room, $landedTile);
         $question = $this->selectQuestion((int) $room['teacher_id'], $targetDifficulty);
         $now = date('Y-m-d H:i:s');
         $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
@@ -358,7 +359,7 @@ class GameEngine
                 'strategy' => $this->questionSelectionRules($room['question_selection_json'] ?? [])['strategy'],
                 'requested_difficulty' => $targetDifficulty,
                 'selected_difficulty' => $question['difficulty'],
-                'based_on_position' => (int) $team['position'],
+                'based_on_position' => $landedTile,
             ],
             'deadline_at' => $deadline,
         ]);
@@ -718,19 +719,25 @@ class GameEngine
         ];
     }
 
+    private function computeLandedTile(int $from, int $dice, array $room): int
+    {
+        $maxPosition = (int) $room['max_position'];
+        $rolledTo = $from + $dice;
+
+        if (($room['finish_rule'] ?? 'clamp_finish') === 'exact_finish' && $rolledTo > $maxPosition) {
+            return max(1, $maxPosition - ($rolledTo - $maxPosition));
+        }
+
+        return min($maxPosition, $rolledTo);
+    }
+
     private function movementForCorrectAnswer(int $from, int $dice, array $room, array $board, array $team): array
     {
         $maxPosition = (int) $room['max_position'];
         $rolledTo = $from + $dice;
-        $finishBounced = false;
+        $finishBounced = ($room['finish_rule'] ?? 'clamp_finish') === 'exact_finish' && $rolledTo > $maxPosition;
+        $landed = $this->computeLandedTile($from, $dice, $room);
         $activeEffects = $this->teamEffects($team);
-
-        if (($room['finish_rule'] ?? 'clamp_finish') === 'exact_finish' && $rolledTo > $maxPosition) {
-            $landed = max(1, $maxPosition - ($rolledTo - $maxPosition));
-            $finishBounced = true;
-        } else {
-            $landed = min($maxPosition, $rolledTo);
-        }
 
         $boardJump = $this->applyBoardJump($landed, $board, $activeEffects);
         $tileEffect = $this->applySpecialTileEffect($boardJump['to'], $board, $maxPosition, $activeEffects);

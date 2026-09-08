@@ -73,7 +73,8 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame('difficulty_zone', $snapshot['room']['question_selection']['strategy']);
         $this->assertSame('MEDIUM', $snapshot['current_turn']['question']['difficulty']);
         $this->assertSame('MEDIUM', $lastQuestion['payload']['selection']['requested_difficulty']);
-        $this->assertSame(40, $lastQuestion['payload']['selection']['based_on_position']);
+        $diceValue = (int) $snapshot['current_turn']['dice_value'];
+        $this->assertSame(40 + $diceValue, $lastQuestion['payload']['selection']['based_on_position']);
     }
 
     public function testDifficultyZoneFallsBackWhenRequestedDifficultyIsEmpty(): void
