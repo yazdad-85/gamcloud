@@ -313,12 +313,12 @@ Ditemukan saat review UX halaman `teacher/games/create` dan `teacher/questions`.
 
 ### Rencana Perbaikan
 
-- [ ] Tampilkan jumlah kotak papan di form create game dan di halaman detail/control room.
-- [ ] Tambah teks penjelas eksplisit di form create: soal muncul tiap giliran, kotak BONUS/TRAP/dst adalah efek tambahan setelah jawaban benar, bukan syarat munculnya soal.
-- [ ] Ubah `questionSelectionRules()` agar zona difficulty dihitung proporsional terhadap `max_position` room, bukan hardcode 1-30/31-70/71-100.
-- [ ] Tambah test yang membuktikan zona difficulty tetap benar untuk board dengan `tile_count` selain 100.
-- [ ] Beri tanda "belum aktif"/sembunyikan kotak DUEL dari board sampai efeknya diimplementasikan.
-- [ ] Tampilkan peringatan di halaman bank soal/import kalau ada soal yang tidak ditandai difficulty (default diam-diam ke MEDIUM).
+- [x] Tampilkan jumlah kotak papan di form create game dan di halaman detail/control room.
+- [x] Tambah teks penjelas eksplisit di form create: soal muncul tiap giliran, kotak BONUS/TRAP/dst adalah efek tambahan setelah jawaban benar, bukan syarat munculnya soal.
+- [x] Ubah `questionSelectionRules()` agar zona difficulty dihitung proporsional terhadap `max_position` room, bukan hardcode 1-30/31-70/71-100.
+- [x] Tambah test yang membuktikan zona difficulty tetap benar untuk board dengan `tile_count` selain 100.
+- [x] Beri tanda "belum aktif"/sembunyikan kotak DUEL dari board sampai efeknya diimplementasikan.
+- [x] Tampilkan peringatan di halaman bank soal/import kalau ada soal yang tidak ditandai difficulty (default diam-diam ke MEDIUM).
 
 ## Catatan Prioritas Implementasi
 
