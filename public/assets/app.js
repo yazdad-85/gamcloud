@@ -621,6 +621,8 @@
                     }
                     if (event.event === 'answer.resolved') {
                         animateMovementEvent(event, snapshot, event.payload.team_uuid);
+                    } else if (event.event === 'mystery.resolved') {
+                        animateMovementEvent(event, snapshot, event.payload.affected_team_uuid);
                     }
                 });
                 playOverlayQueue(overlayQueue, () => overlayBusy, (value) => {
