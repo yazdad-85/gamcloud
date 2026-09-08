@@ -166,6 +166,7 @@ class DocxQuestionImportService
 
             if ($this->isDifficultyLine($line, $difficulty)) {
                 $current['difficulty'] = $difficulty;
+                $current['difficulty_explicit'] = true;
                 continue;
             }
 
@@ -209,14 +210,18 @@ class DocxQuestionImportService
     {
         $type = 'MULTIPLE_CHOICE';
         $difficulty = 'MEDIUM';
-        $stem = preg_replace_callback('/\[(EASY|MEDIUM|HARD|MUDAH|SEDANG|SULIT|PILGAN|PG|TRUE_FALSE|TRUE\/FALSE|BENAR\s*SALAH)\]/i', static function (array $match) use (&$type, &$difficulty): string {
+        $difficultyExplicit = false;
+        $stem = preg_replace_callback('/\[(EASY|MEDIUM|HARD|MUDAH|SEDANG|SULIT|PILGAN|PG|TRUE_FALSE|TRUE\/FALSE|BENAR\s*SALAH)\]/i', static function (array $match) use (&$type, &$difficulty, &$difficultyExplicit): string {
             $token = strtoupper(str_replace(' ', '_', $match[1]));
             if (in_array($token, ['EASY', 'MUDAH'], true)) {
                 $difficulty = 'EASY';
+                $difficultyExplicit = true;
             } elseif (in_array($token, ['HARD', 'SULIT'], true)) {
                 $difficulty = 'HARD';
+                $difficultyExplicit = true;
             } elseif (in_array($token, ['MEDIUM', 'SEDANG'], true)) {
                 $difficulty = 'MEDIUM';
+                $difficultyExplicit = true;
             } elseif (in_array($token, ['TRUE_FALSE', 'TRUE/FALSE', 'BENAR_SALAH'], true)) {
                 $type = 'TRUE_FALSE';
             }
@@ -228,6 +233,7 @@ class DocxQuestionImportService
             'stem' => trim($stem),
             'type' => $type,
             'difficulty' => $difficulty,
+            'difficulty_explicit' => $difficultyExplicit,
             'answer' => null,
             'images' => $images,
             'options' => [],
@@ -297,6 +303,7 @@ class DocxQuestionImportService
         $questionModel = new QuestionModel();
         $optionModel = new QuestionOptionModel();
         $imported = 0;
+        $difficultyUnspecified = 0;
 
         foreach ($questions as $question) {
             $questionId = $questionModel->insert([
@@ -331,12 +338,16 @@ class DocxQuestionImportService
                 ]);
             }
             $imported++;
+            if (empty($question['difficulty_explicit'])) {
+                $difficultyUnspecified++;
+            }
         }
 
         return [
             'batch_uuid' => $batchUuid,
             'imported' => $imported,
             'skipped' => $skipped,
+            'difficulty_unspecified' => $difficultyUnspecified,
         ];
     }
 

@@ -69,6 +69,18 @@ final class DocxQuestionImportServiceTest extends CIUnitTestCase
         $this->assertNotEmpty($optionMedia['images']);
     }
 
+    public function testImportDocxReportsQuestionsMissingExplicitDifficulty(): void
+    {
+        $path = $this->makeDocxFixture();
+        $result = (new DocxQuestionImportService())->import($path, 1);
+        $this->pathsToClean[] = rtrim(FCPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . 'uploads/question-imports/1/' . $result['batch_uuid'];
+
+        // Fixture has 3 imported questions: #1 has [EASY] (explicit),
+        // #2 and #3 only have [TRUE_FALSE] (difficulty defaults to MEDIUM, not explicit).
+        $this->assertSame(2, $result['difficulty_unspecified']);
+    }
+
     public function testTemplateServiceBuildsValidDocx(): void
     {
         $data = (new DocxQuestionTemplateService())->build();

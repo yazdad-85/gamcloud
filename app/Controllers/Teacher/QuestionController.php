@@ -92,6 +92,9 @@ class QuestionController extends BaseController
         if ((int) $result['skipped'] > 0) {
             $message .= ' ' . $result['skipped'] . ' soal dilewati karena format belum valid.';
         }
+        if ((int) $result['difficulty_unspecified'] > 0) {
+            $message .= ' ' . $result['difficulty_unspecified'] . ' soal tanpa tag difficulty eksplisit otomatis dianggap MEDIUM.';
+        }
 
         return redirect()->to('/teacher/questions')->with('message', $message);
     }
