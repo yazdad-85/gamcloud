@@ -41,11 +41,7 @@ class QuestionTopicController extends BaseController
 
     public function destroy(string $topicUuid)
     {
-        $tenant = new TenantContext();
-        $topic = (new QuestionTopicModel())->where('public_uuid', $topicUuid)->first();
-        if ($topic === null || (! $tenant->isSuperadmin() && (int) $topic['owner_teacher_id'] !== $tenant->teacherId())) {
-            return redirect()->back()->with('error', 'Topik tidak ditemukan.');
-        }
+        $topic = (new TenantContext())->assertQuestionTopicOwner($topicUuid);
 
         (new QuestionModel())->where('topic_id', $topic['id'])->set(['topic_id' => null])->update();
         (new QuestionTopicModel())->delete($topic['id']);

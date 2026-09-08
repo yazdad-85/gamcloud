@@ -3,6 +3,7 @@
 namespace App\Services\Security;
 
 use App\Models\GameRoomModel;
+use App\Models\QuestionTopicModel;
 use App\Models\TeacherModel;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use DomainException;
@@ -45,5 +46,23 @@ class TenantContext
         }
 
         return $room;
+    }
+
+    public function assertQuestionTopicOwner(string $topicUuid): array
+    {
+        $topic = (new QuestionTopicModel())->where('public_uuid', $topicUuid)->first();
+        if ($topic === null) {
+            throw PageNotFoundException::forPageNotFound('Topik tidak ditemukan.');
+        }
+
+        if ($this->isSuperadmin()) {
+            return $topic;
+        }
+
+        if ((int) $topic['owner_teacher_id'] !== $this->teacherId()) {
+            throw PageNotFoundException::forPageNotFound('Topik tidak ditemukan.');
+        }
+
+        return $topic;
     }
 }
