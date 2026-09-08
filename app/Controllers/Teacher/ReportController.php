@@ -11,9 +11,14 @@ class ReportController extends BaseController
     public function show(string $roomUuid): string
     {
         $room = (new TenantContext())->assertRoomOwner($roomUuid);
+        $soalPage = (int) ($this->request->getGet('soal_page') ?? 1);
+        $jawabPage = (int) ($this->request->getGet('jawab_page') ?? 1);
 
         return view('teacher/games/report', [
-            'report' => (new GameReportService())->roomReport($room),
+            'report' => (new GameReportService())->roomReport($room, [
+                'soal_page' => $soalPage,
+                'jawab_page' => $jawabPage,
+            ]),
         ]);
     }
 }
