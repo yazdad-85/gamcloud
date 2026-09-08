@@ -942,6 +942,20 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertCount(4, $mysteryTiles);
     }
 
+    public function testCreateRoomComposingBoardSizeAndMysteryTileCountLeavesNoOrphanedClone(): void
+    {
+        $beforeCount = (new BoardTemplateModel())->countAllResults();
+
+        (new GameEngine())->createRoom(1, 'Board Size Plus Mystery No Orphan Test', [
+            'board_size' => 70,
+            'mystery_tile_count' => 4,
+        ]);
+
+        $afterCount = (new BoardTemplateModel())->countAllResults();
+
+        $this->assertSame($beforeCount + 1, $afterCount);
+    }
+
     public function testDeleteRoomRemovesClonedBoardSizeTemplate(): void
     {
         $engine = new GameEngine();

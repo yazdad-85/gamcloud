@@ -1557,6 +1557,19 @@ class GameEngine
         );
 
         $newSpecialTiles = array_merge($nonMysteryTiles, $newMysteryTiles);
+
+        // If $board is already a private per-room clone (e.g. from applyBoardSize()),
+        // update it in place instead of inserting a second clone — otherwise the
+        // first clone is never referenced by the room and is orphaned forever,
+        // since deleteRoom() only knows how to clean up the room's final board.
+        if ($board['status'] === 'ROOM_INSTANCE') {
+            (new BoardTemplateModel())->update($board['id'], [
+                'special_tiles_json' => json_encode($newSpecialTiles, JSON_UNESCAPED_SLASHES),
+            ]);
+
+            return (new BoardTemplateModel())->find($board['id']);
+        }
+
         $newBoardId = (new BoardTemplateModel())->insert([
             'public_uuid' => Uuid::v4(),
             'name' => $board['name'] . ' (Room)',
