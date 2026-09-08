@@ -511,10 +511,34 @@ class GameEngine
             $this->recordScore($room, $team, 'SPECIAL_TILE', $specialPoints, $specialPoints > 0 ? 'Bonus tile khusus' : 'Penalti tile khusus');
         }
 
-        $isMysteryLanding = $isCorrect && ($movement['special'] ?? null) === 'MYSTERY';
-        $finished = ! $isMysteryLanding && $to >= (int) $room['max_position'];
+        $pendingChallenge = $isCorrect ? ($movement['pending_board_challenge'] ?? null) : null;
+        $isMysteryLanding = $isCorrect && ($movement['special'] ?? null) === 'MYSTERY' && $pendingChallenge === null;
+        $finished = ! $isMysteryLanding && $pendingChallenge === null && $to >= (int) $room['max_position'];
         $nextTeam = null;
-        if ($isMysteryLanding) {
+        $hardQuestion = null;
+        $poolRecycled = false;
+        $selectionRules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
+
+        if ($pendingChallenge === 'SNAKE' || $pendingChallenge === 'LADDER') {
+            $hardQuestion = $this->selectQuestion(
+                (int) $room['teacher_id'],
+                'HARD',
+                $selectionRules['topic_ids'],
+                (int) $room['id'],
+                $poolRecycled
+            );
+            $deadlineSeconds = $pendingChallenge === 'SNAKE'
+                ? (int) ($room['redemption_time_seconds'] ?: $room['question_time_seconds'])
+                : (int) $room['question_time_seconds'];
+            $state = $pendingChallenge === 'SNAKE' ? 'SNAKE_REDEMPTION_ACTIVE' : 'LADDER_CHALLENGE_ACTIVE';
+            (new GameTurnModel())->update($turn['id'], [
+                'state' => $state,
+                'answer_is_correct' => 1,
+                'question_id' => $hardQuestion['id'],
+                'question_started_at' => date('Y-m-d H:i:s'),
+                'question_deadline_at' => date('Y-m-d H:i:s', time() + $deadlineSeconds),
+            ]);
+        } elseif ($isMysteryLanding) {
             (new GameTurnModel())->update($turn['id'], [
                 'state' => 'MYSTERY_CHOICE_PENDING',
                 'answer_is_correct' => 1,
@@ -567,6 +591,25 @@ class GameEngine
                     'landed' => $movement['landed'],
                     'to' => $movement['to'],
                 ],
+            ]);
+        }
+
+        if ($pendingChallenge === 'SNAKE' || $pendingChallenge === 'LADDER') {
+            if ($poolRecycled) {
+                $this->recordEvent($room, 'question.pool_recycled', [
+                    'room_uuid' => $room['public_uuid'],
+                    'difficulty' => 'HARD',
+                    'topic_ids' => $selectionRules['topic_ids'],
+                    'reason' => 'exhausted',
+                ]);
+            }
+            $eventName = $pendingChallenge === 'SNAKE' ? 'snake.redemption_started' : 'ladder.challenge_started';
+            $this->recordEvent($room, $eventName, [
+                'team_uuid' => $team['public_uuid'],
+                'from' => $movement['from'],
+                'landed' => $movement['landed'],
+                'challenge_to' => $movement['challenge_to'],
+                'question' => $this->publicQuestion($hardQuestion),
             ]);
         }
 
@@ -1077,6 +1120,66 @@ class GameEngine
         $landed = $this->computeLandedTile($from, $dice, $room);
         $activeEffects = $this->teamEffects($team);
 
+        // Peek snake/ladder at landed. Safe shield still consumes and blocks without redemption.
+        foreach (json_decode((string) $board['snakes_json'], true) ?: [] as $snake) {
+            if ((int) $snake['from'] === $landed) {
+                if (($activeEffects['safe_shield'] ?? 0) > 0) {
+                    $activeEffects['safe_shield']--;
+
+                    return [
+                        'from' => $from,
+                        'rolled_to' => $rolledTo,
+                        'landed' => $landed,
+                        'to' => $landed,
+                        'special' => 'SAFE_BLOCK',
+                        'effects' => [[
+                            'type' => 'SAFE_BLOCK',
+                            'tile' => $landed,
+                            'blocked_type' => 'SNAKE',
+                            'blocked_to' => (int) $snake['to'],
+                            'label' => 'Perisai menahan ular',
+                        ]],
+                        'score_delta' => 0,
+                        'active_effects' => $activeEffects,
+                        'finish_bounced' => $finishBounced,
+                        'pending_board_challenge' => null,
+                    ];
+                }
+
+                return [
+                    'from' => $from,
+                    'rolled_to' => $rolledTo,
+                    'landed' => $landed,
+                    'to' => $landed,
+                    'special' => 'SNAKE',
+                    'effects' => [],
+                    'score_delta' => 0,
+                    'active_effects' => $activeEffects,
+                    'finish_bounced' => $finishBounced,
+                    'pending_board_challenge' => 'SNAKE',
+                    'challenge_to' => (int) $snake['to'],
+                ];
+            }
+        }
+
+        foreach (json_decode((string) $board['ladders_json'], true) ?: [] as $ladder) {
+            if ((int) $ladder['from'] === $landed) {
+                return [
+                    'from' => $from,
+                    'rolled_to' => $rolledTo,
+                    'landed' => $landed,
+                    'to' => $landed,
+                    'special' => 'LADDER',
+                    'effects' => [],
+                    'score_delta' => 0,
+                    'active_effects' => $activeEffects,
+                    'finish_bounced' => $finishBounced,
+                    'pending_board_challenge' => 'LADDER',
+                    'challenge_to' => (int) $ladder['to'],
+                ];
+            }
+        }
+
         $boardJump = $this->applyBoardJump($landed, $board, $activeEffects);
         $tileEffect = $this->applySpecialTileEffect($boardJump['to'], $board, $activeEffects);
         $effects = array_merge($boardJump['effects'], $tileEffect['effects']);
@@ -1092,6 +1195,7 @@ class GameEngine
             'score_delta' => (int) $tileEffect['score_delta'],
             'active_effects' => $activeEffects,
             'finish_bounced' => $finishBounced,
+            'pending_board_challenge' => null,
         ];
     }
 
