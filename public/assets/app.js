@@ -73,6 +73,12 @@
         }
     }
 
+    const displayPositions = new Map();
+
+    function effectivePosition(team) {
+        return displayPositions.has(team.uuid) ? displayPositions.get(team.uuid) : Number(team.position || 1);
+    }
+
     function renderBoard(element, snapshot) {
         if (!element || !snapshot) {
             return;
@@ -94,7 +100,7 @@
         const currentTeamUuid = snapshot.room && snapshot.room.current_team_uuid;
         const recentMovement = latestMovement(snapshot);
         (snapshot.teams || []).forEach((team) => {
-            const position = Number(team.position || 1);
+            const position = effectivePosition(team);
             teamsByPosition[position] = teamsByPosition[position] || [];
             teamsByPosition[position].push(team);
         });
@@ -614,7 +620,7 @@
                         overlayQueue.push(item);
                     }
                     if (event.event === 'answer.resolved') {
-                        animateMovementEvent(event, snapshot);
+                        animateMovementEvent(event, snapshot, event.payload.team_uuid);
                     }
                 });
                 playOverlayQueue(overlayQueue, () => overlayBusy, (value) => {
@@ -735,16 +741,16 @@
         return {tone: 'info', title: 'Tile Khusus', body: team};
     }
 
-    function animateMovementEvent(event, snapshot) {
+    function animateMovementEvent(event, snapshot, teamUuid) {
         const movement = event.payload && event.payload.movement;
         if (!movement || Number(movement.from) === Number(movement.to)) {
-            return;
+            return Promise.resolve();
         }
 
         const board = document.querySelector('[data-board]');
-        const team = (snapshot.teams || []).find((item) => item.uuid === event.payload.team_uuid);
+        const team = (snapshot.teams || []).find((item) => item.uuid === teamUuid);
         if (!board || !team) {
-            return;
+            return Promise.resolve();
         }
 
         const tilePath = movementTilePath(movement, snapshot);
@@ -752,8 +758,11 @@
             .map((tile) => viewportTileCenter(board, tile))
             .filter(Boolean);
         if (points.length < 2) {
-            return;
+            return Promise.resolve();
         }
+
+        displayPositions.set(team.uuid, Number(movement.from));
+        renderBoard(board, snapshot);
 
         const mover = document.createElement('div');
         mover.className = 'board-mover';
@@ -777,10 +786,13 @@
         });
 
         addTileEffect(board, Number(movement.to), movement.special);
-        animation.finished
+
+        return animation.finished
             .catch(() => null)
             .finally(() => {
                 mover.remove();
+                displayPositions.delete(team.uuid);
+                renderBoard(board, snapshot);
             });
     }
 
