@@ -825,20 +825,6 @@ class GameEngine
             return $this->applyMysteryEffect($position, $label, $maxPosition, $activeEffects);
         }
 
-        if ($type === 'DUEL') {
-            return [
-                'to' => $position,
-                'special' => 'DUEL',
-                'effects' => [[
-                    'type' => 'DUEL',
-                    'tile' => $position,
-                    'label' => $label,
-                    'status' => 'PENDING_IMPLEMENTATION',
-                ]],
-                'score_delta' => 0,
-            ];
-        }
-
         return [
             'to' => $position,
             'special' => null,
@@ -1253,7 +1239,7 @@ class GameEngine
 
             $position = (int) ($tile['tile'] ?? 0);
             $type = strtoupper((string) ($tile['type'] ?? ''));
-            if ($position < 1 || ! in_array($type, ['BONUS', 'TRAP', 'SAFE', 'MYSTERY', 'DUEL'], true)) {
+            if ($position < 1 || ! in_array($type, ['BONUS', 'TRAP', 'SAFE', 'MYSTERY'], true)) {
                 return null;
             }
 

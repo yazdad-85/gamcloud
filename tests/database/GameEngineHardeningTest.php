@@ -307,7 +307,7 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertContains($updatedTeam['score'], [100, 135]);
     }
 
-    public function testDuelTileStructureTriggersWithoutChangingScore(): void
+    public function testDuelTileIsHiddenAndActsAsNormalTile(): void
     {
         $engine = new GameEngine();
         $room = $engine->createRoom(1, 'Duel Tile Test', [
@@ -318,12 +318,17 @@ final class GameEngineHardeningTest extends CIUnitTestCase
 
         $snapshot = $this->answerCorrectWithForcedMove($engine, $room, $team, 76, 1);
         $updatedTeam = $this->teamFromSnapshot($snapshot, $team['public_uuid']);
-        $lastSpecial = $this->lastEvent($this->roomId($room['uuid']), 'tile.special_triggered');
 
         $this->assertSame(77, $updatedTeam['position']);
         $this->assertSame(100, $updatedTeam['score']);
-        $this->assertSame('DUEL', $lastSpecial['payload']['effect']['type']);
-        $this->assertSame('PENDING_IMPLEMENTATION', $lastSpecial['payload']['effect']['status']);
+        $this->assertSame(0, (new GameEventModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->where('type', 'tile.special_triggered')
+            ->countAllResults());
+        $this->assertSame([], array_values(array_filter(
+            $snapshot['board']['special_tiles'],
+            static fn (array $tile): bool => (int) $tile['tile'] === 77,
+        )));
     }
 
     public function testFastCorrectAnswerAddsTimeBonusTransaction(): void
