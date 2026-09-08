@@ -546,6 +546,91 @@ class GameEngine
         return $response;
     }
 
+    public function chooseMysteryTarget(string $roomUuid, string $teamUuid, string $target, ?string $idempotencyKey = null): array
+    {
+        $room = $this->roomByUuid($roomUuid);
+        $team = $this->teamByUuid($teamUuid, (int) $room['id']);
+        $scope = 'mystery_choose:' . $room['public_uuid'] . ':' . $team['public_uuid'];
+        if ($existing = $this->idempotentResponse($scope, $idempotencyKey)) {
+            return $existing;
+        }
+
+        $turn = $this->activeTurn((int) $room['id']);
+        if ($turn === null || $turn['state'] !== 'MYSTERY_CHOICE_PENDING' || (int) $turn['team_id'] !== (int) $team['id']) {
+            throw new DomainException('Tidak ada Kotak Misteri yang menunggu pilihan tim ini.');
+        }
+
+        if ($this->isTurnExpired($turn)) {
+            $response = $this->resolveMysteryChoiceTimeout($room, $team, $turn);
+            $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+            return $response;
+        }
+
+        $targetTeamId = null;
+        if ($target !== 'SELF') {
+            $targetTeam = (new GameTeamModel())
+                ->where('room_id', $room['id'])
+                ->where('public_uuid', $target)
+                ->first();
+            if ($targetTeam === null || (int) $targetTeam['id'] === (int) $team['id']) {
+                throw new DomainException('Target Kotak Misteri tidak valid.');
+            }
+            $targetTeamId = (int) $targetTeam['id'];
+        }
+
+        $question = $this->selectQuestion((int) $room['teacher_id'], 'HARD');
+        $now = date('Y-m-d H:i:s');
+        $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
+
+        (new GameTurnModel())->update($turn['id'], [
+            'state' => 'MYSTERY_QUESTION_ACTIVE',
+            'mystery_target_team_id' => $targetTeamId,
+            'question_id' => $question['id'],
+            'question_started_at' => $now,
+            'question_deadline_at' => $deadline,
+        ]);
+        $this->bumpRoom($room['id']);
+        $room = $this->roomById((int) $room['id']);
+
+        $this->recordEvent($room, 'mystery.target_chosen', [
+            'team_uuid' => $team['public_uuid'],
+            'target' => $target,
+        ]);
+
+        $response = $this->snapshot($room['public_uuid']);
+        $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+        return $response;
+    }
+
+    private function resolveMysteryChoiceTimeout(array $room, array $team, array $turn): array
+    {
+        $nextTeam = $this->nextTeam((int) $room['id'], (int) $team['id']);
+
+        $this->db->transStart();
+        (new GameTurnModel())->update($turn['id'], [
+            'state' => 'QUESTION_TIMEOUT',
+        ]);
+        (new GameRoomModel())->update($room['id'], [
+            'current_team_id' => $nextTeam['id'],
+        ]);
+        $this->createTurn($room, $nextTeam, ((int) $turn['turn_number']) + 1);
+        $this->bumpRoom($room['id']);
+        $this->db->transComplete();
+
+        $room = $this->roomById((int) $room['id']);
+        $this->recordEvent($room, 'turn.timeout', [
+            'team_uuid' => $team['public_uuid'],
+            'turn_uuid' => $turn['public_uuid'],
+            'next_team_uuid' => $nextTeam['public_uuid'],
+            'points' => 0,
+            'reason' => 'mystery_choice_expired',
+        ]);
+
+        return $this->snapshot($room['public_uuid']);
+    }
+
     public function snapshot(string $roomUuid): array
     {
         $room = $this->roomByUuid($roomUuid);

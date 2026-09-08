@@ -7,6 +7,7 @@ use App\Models\GameEventModel;
 use App\Models\GameRoomModel;
 use App\Models\GameTeamModel;
 use App\Models\GameTurnModel;
+use App\Models\QuestionModel;
 use App\Models\QuestionOptionModel;
 use App\Models\ScoreTransactionModel;
 use App\Services\Game\GameEngine;
@@ -303,6 +304,78 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame(100, $updatedTeam['score']);
         $this->assertSame('MYSTERY_CHOICE_PENDING', $snapshot['current_turn']['state']);
         $this->assertSame($team['public_uuid'], $snapshot['current_turn']['team_uuid']);
+    }
+
+    public function testChooseMysteryTargetSelfPreparesHardQuestion(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Choose Self Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Misteri')['team'];
+        $this->seedHardQuestion(1);
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 45, 1);
+
+        $snapshot = $engine->chooseMysteryTarget($room['uuid'], $team['public_uuid'], 'SELF');
+
+        $this->assertSame('MYSTERY_QUESTION_ACTIVE', $snapshot['current_turn']['state']);
+        $this->assertSame('HARD', $snapshot['current_turn']['question']['difficulty']);
+        $lastEvent = $this->lastEvent($this->roomId($room['uuid']), 'mystery.target_chosen');
+        $this->assertSame('SELF', $lastEvent['payload']['target']);
+    }
+
+    public function testChooseMysteryTargetRejectsSelfAsOpponent(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Choose Invalid Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Misteri')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 45, 1);
+
+        $this->expectException(\DomainException::class);
+        $engine->chooseMysteryTarget($room['uuid'], $team['public_uuid'], $team['public_uuid']);
+    }
+
+    public function testChooseMysteryTargetOpponentValidatesTeamExistsInRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Choose Opponent Invalid Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Misteri')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $team, 45, 1);
+
+        $this->expectException(\DomainException::class);
+        $engine->chooseMysteryTarget($room['uuid'], $team['public_uuid'], 'not-a-real-team-uuid');
+    }
+
+    public function testMysteryChoiceTimeoutSkipsTurnWithoutEffect(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Choice Timeout Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $first = $engine->joinByPin($room['pin'], 'Tim A')['team'];
+        $second = $engine->joinByPin($room['pin'], 'Tim B')['team'];
+        $this->answerCorrectWithForcedMove($engine, $room, $first, 45, 1);
+
+        $turns = new GameTurnModel();
+        $turn = $turns->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
+        $turns->update($turn['id'], [
+            'question_deadline_at' => date('Y-m-d H:i:s', time() - 5),
+        ]);
+
+        $snapshot = $engine->chooseMysteryTarget($room['uuid'], $first['public_uuid'], 'SELF');
+        $updatedTeam = $this->teamFromSnapshot($snapshot, $first['public_uuid']);
+
+        $this->assertSame('QUESTION_TIMEOUT', (new GameTurnModel())->find($turn['id'])['state']);
+        $this->assertSame($second['public_uuid'], $snapshot['room']['current_team_uuid']);
+        $this->assertSame(100, $updatedTeam['score']);
     }
 
     public function testDuelTileIsHiddenAndActsAsNormalTile(): void
@@ -772,6 +845,37 @@ final class GameEngineHardeningTest extends CIUnitTestCase
             : $this->wrongOptionId((int) $turn['question_id']);
 
         return $engine->answer($room['uuid'], $team['public_uuid'], $optionId);
+    }
+
+    private function seedHardQuestion(int $teacherId): void
+    {
+        $now = date('Y-m-d H:i:s');
+        $questionId = (new QuestionModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'owner_teacher_id' => $teacherId,
+            'source_type' => 'MASTER',
+            'question_type' => 'MULTIPLE_CHOICE',
+            'stem' => 'Berapa hasil dari akar kuadrat 144? (soal HARD uji)',
+            'difficulty' => 'HARD',
+            'status' => 'PUBLISHED',
+            'points' => 100,
+            'time_limit_seconds' => 30,
+            'explanation' => null,
+            'meta_json' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $sort = 1;
+        foreach (['A' => ['10', false], 'B' => ['12', true], 'C' => ['14', false], 'D' => ['16', false]] as $label => [$body, $isCorrect]) {
+            (new QuestionOptionModel())->insert([
+                'question_id' => $questionId,
+                'label' => $label,
+                'body' => $body,
+                'is_correct' => $isCorrect ? 1 : 0,
+                'sort_order' => $sort++,
+            ]);
+        }
     }
 
     private function noScoring(): array
