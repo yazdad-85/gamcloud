@@ -358,7 +358,7 @@ class GameEngine
         $landedTile = $this->computeLandedTile((int) $team['position'], $dice, $room);
         $selectionRules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
         $targetDifficulty = $this->targetDifficultyForTurn($room, $landedTile);
-        $question = $this->selectQuestion((int) $room['teacher_id'], $targetDifficulty, $selectionRules['topic_ids']);
+        $question = $this->selectQuestion((int) $room['teacher_id'], $targetDifficulty, $selectionRules['topic_ids'], (int) $room['id']);
         $now = date('Y-m-d H:i:s');
         $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
 
@@ -601,7 +601,7 @@ class GameEngine
         }
 
         $selectionRules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
-        $question = $this->selectQuestion((int) $room['teacher_id'], 'HARD', $selectionRules['topic_ids']);
+        $question = $this->selectQuestion((int) $room['teacher_id'], 'HARD', $selectionRules['topic_ids'], (int) $room['id']);
         $now = date('Y-m-d H:i:s');
         $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
 
@@ -900,36 +900,93 @@ class GameEngine
         ]);
     }
 
-    private function selectQuestion(int $teacherId, ?string $difficulty = null, array $topicIds = []): array
+    private function usedQuestionIdsForRoom(int $roomId): array
     {
-        $query = (new QuestionModel())
-            ->where('owner_teacher_id', $teacherId)
-            ->where('status', 'PUBLISHED');
+        $answersTable = $this->db->prefixTable('game_answers');
+        $turnsTable = $this->db->prefixTable('game_turns');
 
-        if ($topicIds !== []) {
-            $query->whereIn('topic_id', $topicIds);
-        }
+        $fromAnswers = array_map(
+            static fn (array $row): int => (int) $row['question_id'],
+            $this->db->table('game_answers')
+                ->select('game_answers.question_id')
+                ->join('game_turns', 'game_turns.id = game_answers.turn_id')
+                ->where('game_turns.room_id', $roomId)
+                ->where("{$answersTable}.question_id IS NOT NULL", null, false)
+                ->get()
+                ->getResultArray()
+        );
 
-        if ($difficulty !== null) {
-            $query->where('difficulty', $difficulty);
-        }
+        $fromTurns = array_map(
+            static fn (array $row): int => (int) $row['question_id'],
+            $this->db->table('game_turns')
+                ->select('question_id')
+                ->where('room_id', $roomId)
+                ->where("{$turnsTable}.question_id IS NOT NULL", null, false)
+                ->get()
+                ->getResultArray()
+        );
 
-        $questions = $query->findAll();
-        if ($questions === [] && $difficulty !== null) {
-            $fallbackQuery = (new QuestionModel())
+        return array_values(array_unique(array_filter(array_merge($fromAnswers, $fromTurns))));
+    }
+
+    private function selectQuestion(int $teacherId, ?string $difficulty = null, array $topicIds = [], ?int $roomId = null): array
+    {
+        $usedIds = $roomId !== null ? $this->usedQuestionIdsForRoom($roomId) : [];
+
+        $pick = function (bool $excludeUsed) use ($teacherId, $difficulty, $topicIds, $usedIds): array {
+            $query = (new QuestionModel())
                 ->where('owner_teacher_id', $teacherId)
                 ->where('status', 'PUBLISHED');
             if ($topicIds !== []) {
-                $fallbackQuery->whereIn('topic_id', $topicIds);
+                $query->whereIn('topic_id', $topicIds);
             }
-            $questions = $fallbackQuery->findAll();
+            if ($difficulty !== null) {
+                $query->where('difficulty', $difficulty);
+            }
+            if ($excludeUsed && $usedIds !== []) {
+                $query->whereNotIn('id', $usedIds);
+            }
+            $questions = $query->findAll();
+            if ($questions === [] && $difficulty !== null) {
+                $fallbackQuery = (new QuestionModel())
+                    ->where('owner_teacher_id', $teacherId)
+                    ->where('status', 'PUBLISHED');
+                if ($topicIds !== []) {
+                    $fallbackQuery->whereIn('topic_id', $topicIds);
+                }
+                if ($excludeUsed && $usedIds !== []) {
+                    $fallbackQuery->whereNotIn('id', $usedIds);
+                }
+                $questions = $fallbackQuery->findAll();
+            }
+
+            return $questions;
+        };
+
+        $questions = $pick(true);
+        $recycled = false;
+        if ($questions === []) {
+            $questions = $pick(false);
+            $recycled = $roomId !== null && $usedIds !== [];
         }
 
         if ($questions === []) {
             throw new DomainException('Bank soal masih kosong.');
         }
 
-        return $questions[array_rand($questions)];
+        $selected = $questions[array_rand($questions)];
+
+        if ($recycled && $roomId !== null) {
+            $room = $this->roomById($roomId);
+            $this->recordEvent($room, 'question.pool_recycled', [
+                'room_uuid' => $room['public_uuid'],
+                'difficulty' => $difficulty,
+                'topic_ids' => $topicIds,
+                'reason' => 'exhausted',
+            ]);
+        }
+
+        return $selected;
     }
 
     private function applyBoardJump(int $position, array $board, array &$activeEffects): array

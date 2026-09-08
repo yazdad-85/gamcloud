@@ -1057,6 +1057,81 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertNull((new BoardTemplateModel())->find($usedBoardId));
     }
 
+    public function testRollDoesNotReuseQuestionIdsAlreadyOnTurnsInRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'No Repeat Simple', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim A')['team'];
+        $engine->start($room['uuid']);
+
+        $engine->roll($room['uuid'], $team['public_uuid']);
+        $turn = (new GameTurnModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->orderBy('id', 'DESC')
+            ->first();
+        $firstQuestionId = (int) $turn['question_id'];
+
+        $engine->answer($room['uuid'], $team['public_uuid'], $this->wrongOptionId($firstQuestionId));
+
+        $engine->roll($room['uuid'], $team['public_uuid']);
+        $secondTurn = (new GameTurnModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->orderBy('id', 'DESC')
+            ->first();
+        $secondQuestionId = (int) $secondTurn['question_id'];
+
+        $this->assertNotSame($firstQuestionId, $secondQuestionId);
+    }
+
+    public function testQuestionPoolRecyclesWhenExhausted(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Recycle Test', [
+            'turn_order_mode' => 'join_order',
+            'scoring' => $this->noScoring(),
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Recycle')['team'];
+        $engine->start($room['uuid']);
+        $roomId = $this->roomId($room['uuid']);
+
+        $allIds = array_map(
+            static fn (array $q): int => (int) $q['id'],
+            (new QuestionModel())
+                ->where('owner_teacher_id', 1)
+                ->where('status', 'PUBLISHED')
+                ->findAll()
+        );
+        $this->assertNotEmpty($allIds);
+
+        $turn = (new GameTurnModel())
+            ->where('room_id', $roomId)
+            ->orderBy('id', 'DESC')
+            ->first();
+        foreach ($allIds as $qid) {
+            (new GameAnswerModel())->insert([
+                'turn_id' => $turn['id'],
+                'team_id' => $team['id'],
+                'question_id' => $qid,
+                'option_id' => null,
+                'answer_text' => 'seed-used',
+                'is_correct' => 0,
+                'answered_at' => date('Y-m-d H:i:s'),
+                'response_ms' => 1,
+            ]);
+        }
+
+        $engine->roll($room['uuid'], $team['public_uuid']);
+        $event = $this->lastEvent($roomId, 'question.pool_recycled');
+        $this->assertSame('exhausted', $event['payload']['reason']);
+        $this->assertContains(
+            (int) (new GameTurnModel())->where('room_id', $roomId)->orderBy('id', 'DESC')->first()['question_id'],
+            $allIds
+        );
+    }
+
     private function roomId(string $roomUuid): int
     {
         $room = (new GameRoomModel())->where('public_uuid', $roomUuid)->first();
