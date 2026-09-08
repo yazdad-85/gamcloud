@@ -20,9 +20,19 @@ class QuestionController extends BaseController
     {
         $tenant = new TenantContext();
         $questionQuery = (new QuestionModel())->orderBy('id', 'DESC');
+        $topicQuery = (new QuestionTopicModel())->orderBy('name', 'ASC');
 
         if (! $tenant->isSuperadmin()) {
             $questionQuery->where('owner_teacher_id', $tenant->teacherId());
+            $topicQuery->where('owner_teacher_id', $tenant->teacherId());
+        }
+
+        $topicFilter = (string) $this->request->getGet('topic');
+        if ($topicFilter === 'none') {
+            $questionQuery->where('topic_id', null);
+        } elseif ($topicFilter !== '') {
+            $filterTopic = (new QuestionTopicModel())->where('public_uuid', $topicFilter)->first();
+            $questionQuery->where('topic_id', $filterTopic['id'] ?? 0);
         }
 
         $questions = $questionQuery->findAll();
@@ -33,11 +43,15 @@ class QuestionController extends BaseController
             $options[$question['id']] = $optionModel->where('question_id', $question['id'])->orderBy('sort_order')->findAll();
         }
 
+        $topics = $topicQuery->findAll();
+
         return view('teacher/questions/index', [
             'questions' => $questions,
             'options' => $options,
             'isSuperadmin' => $tenant->isSuperadmin(),
             'teachers' => $tenant->isSuperadmin() ? (new TeacherModel())->orderBy('name', 'ASC')->findAll() : [],
+            'topics' => $topics,
+            'topicNames' => array_column($topics, 'name', 'id'),
         ]);
     }
 

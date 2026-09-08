@@ -59,4 +59,45 @@ final class QuestionTopicTest extends CIUnitTestCase
         $this->assertNotNull($question);
         $this->assertNull($question['topic_id']);
     }
+
+    public function testTopicFilterQueryReturnsOnlyMatchingQuestions(): void
+    {
+        $topicId = (new QuestionTopicModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'owner_teacher_id' => 1,
+            'name' => 'Topik Filter',
+        ], true);
+        $taggedId = (new QuestionModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'owner_teacher_id' => 1,
+            'topic_id' => $topicId,
+            'source_type' => 'PERSONAL',
+            'question_type' => 'MULTIPLE_CHOICE',
+            'stem' => 'Soal bertopik',
+            'difficulty' => 'MEDIUM',
+            'status' => 'PUBLISHED',
+            'points' => 100,
+            'time_limit_seconds' => 30,
+        ], true);
+        $untaggedId = (new QuestionModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'owner_teacher_id' => 1,
+            'topic_id' => null,
+            'source_type' => 'PERSONAL',
+            'question_type' => 'MULTIPLE_CHOICE',
+            'stem' => 'Soal tanpa topik',
+            'difficulty' => 'MEDIUM',
+            'status' => 'PUBLISHED',
+            'points' => 100,
+            'time_limit_seconds' => 30,
+        ], true);
+
+        $byTopic = (new QuestionModel())->where('owner_teacher_id', 1)->where('topic_id', $topicId)->findAll();
+        $untagged = (new QuestionModel())->where('owner_teacher_id', 1)->where('topic_id', null)->findAll();
+
+        $this->assertCount(1, $byTopic);
+        $this->assertSame($taggedId, $byTopic[0]['id']);
+        $this->assertTrue(in_array($untaggedId, array_column($untagged, 'id'), true));
+        $this->assertFalse(in_array($taggedId, array_column($untagged, 'id'), true));
+    }
 }
