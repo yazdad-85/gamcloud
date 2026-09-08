@@ -802,6 +802,8 @@ class GameEngine
             ->groupStart()
             ->like('scope', 'roll:' . $room['public_uuid'] . ':', 'after')
             ->orLike('scope', 'answer:' . $room['public_uuid'] . ':', 'after')
+            ->orLike('scope', 'mystery_choose:' . $room['public_uuid'] . ':', 'after')
+            ->orLike('scope', 'mystery_answer:' . $room['public_uuid'] . ':', 'after')
             ->groupEnd()
             ->delete();
         $this->db->table('game_rooms')->where('id', $room['id'])->delete();

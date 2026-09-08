@@ -157,6 +157,8 @@ Tambah 2 state baru di `game_turns.state` (mengikuti pola existing `ROLL_READY �
 - Team controller: setelah event `mystery.target_chosen` milik tim sendiri belum ada / setelah mendarat MYSTERY, render pilihan (2 tombol + daftar tim lawan) sebelum soal HARD muncul.
 - Projector: overlay baru untuk tahap pilih ("Tim X sedang membuka Kotak Misteri...") dan tahap hasil (`mystery.resolved`) dengan tone sukses/gagal sesuai hasil — memperluas `overlayForEvent()`/`specialOverlay()` yang sudah ada, bukan bikin sistem overlay baru.
 
+**Catatan implementasi aktual (pasca-implementasi):** Kolom `mystery_question_id` di atas ternyata tidak dibuat. Implementasi akhir menyadari bahwa `game_turns.question_id` (kolom yang sudah ada untuk soal giliran biasa) sudah aman untuk dipakai ulang menyimpan soal HARD mystery — jawaban asli sudah tercatat terpisah di `game_answers` sebelum turn ini dipakai ulang, jadi menimpa `question_id`/`question_started_at`/`question_deadline_at` tidak merusak riwayat. Ini menghapus kebutuhan satu kolom migration tambahan. Begitu juga timeout kedua state baru ditangani oleh dua method baru dedicated (`resolveMysteryChoiceTimeout()` untuk `MYSTERY_CHOICE_PENDING`, dan `resolveMysteryOutcome(..., false)` untuk `MYSTERY_QUESTION_ACTIVE`) alih-alih memperluas `resolveTimedOutTurn()` yang sudah ada — pemisahan ini lebih jelas karena efek "tidak ada apa-apa" vs "boomerang" berbeda cukup jauh dari efek timeout soal biasa. Lihat `docs/superpowers/plans/2026-09-08-create-game-mystery-box-redesign-plan.md` Task 8-11 untuk kode aktualnya.
+
 ### Testing
 
 - `chooseMysteryTarget` menolak target diri sendiri (harus pilih tim lain, bukan diri sendiri) dan target tim yang tidak ada di room.
@@ -174,7 +176,7 @@ Tambah 2 state baru di `game_turns.state` (mengikuti pola existing `ROLL_READY �
 | Tabel | Perubahan | Alasan |
 |---|---|---|
 | `game_turns` | + `mystery_target_team_id` (nullable int, FK) | Bagian H |
-| `game_turns` | + `mystery_question_id` (nullable int) | Bagian H |
+| `game_turns` | ~~`mystery_question_id`~~ — tidak jadi dibuat, `question_id` yang sudah ada dipakai ulang (lihat catatan implementasi di atas) | Bagian H |
 | `board_templates` | Tidak ada kolom baru; `status` sudah cukup fleksibel untuk nilai baru `'ROOM_INSTANCE'` | Bagian G |
 | `game_rooms` | Tidak ada kolom baru | Bagian G, D |
 
