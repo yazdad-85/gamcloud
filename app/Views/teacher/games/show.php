@@ -7,6 +7,8 @@
         <h1 class="page-title"><?= esc($room['title']) ?></h1>
         <p class="muted">PIN <strong><?= esc($room['pin']) ?></strong> / status <span data-room-status><?= esc($room['status']) ?></span></p>
         <p class="muted">
+            Papan: <strong><?= esc((string) $snapshot['board']['tile_count']) ?> kotak</strong>
+            /
             Mode:
             <strong><?= esc($snapshot['mode_state']['label'] ?? $room['game_mode'] ?? 'Ular Tangga Kuis') ?></strong>
             /

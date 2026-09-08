@@ -88,6 +88,7 @@
                 </label>
             </div>
             <p class="field-help">Zona difficulty: kotak 1-30 EASY, 31-70 MEDIUM, 71-100 HARD. Jika stok zona kosong, game fallback ke soal published lain.</p>
+            <p class="field-help">Soal muncul di setiap giliran lempar dadu, disesuaikan dengan kotak yang dituju dadu. Kotak BONUS/TRAP/SAFE/MYSTERY adalah efek tambahan yang berlaku setelah jawaban benar, bukan syarat munculnya soal.</p>
         </div>
         <div class="field">
             <label>Mode Game</label>
