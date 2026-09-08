@@ -7,13 +7,36 @@ use App\Services\Game\Uuid;
 use CodeIgniter\Database\Seeder;
 use CodeIgniter\Shield\Entities\User;
 use CodeIgniter\Shield\Models\UserModel;
+use RuntimeException;
 
+/**
+ * Seeds bootstrap accounts. Passwords MUST come from .env — never hardcode
+ * credentials in the repository (especially public remotes).
+ *
+ * Required:
+ *   SEED_SUPERADMIN_PASSWORD
+ *   SEED_TEACHER_PASSWORD
+ */
 class AuthUserSeeder extends Seeder
 {
     public function run(): void
     {
-        $superadmin = $this->upsertShieldUser('superadmin', 'superadmin@example.test', 'Admin!8394MVP', 'superadmin');
-        $teacher = $this->upsertShieldUser('guru.demo', 'guru@example.test', 'Kuat!7284MVP', 'teacher');
+        $superPassword  = trim((string) env('SEED_SUPERADMIN_PASSWORD', ''));
+        $teacherPassword = trim((string) env('SEED_TEACHER_PASSWORD', ''));
+
+        if ($superPassword === '' || $teacherPassword === '') {
+            throw new RuntimeException(
+                'AuthUserSeeder requires SEED_SUPERADMIN_PASSWORD and SEED_TEACHER_PASSWORD in .env. '
+                . 'Do not commit real passwords to git.'
+            );
+        }
+
+        if (strlen($superPassword) < 10 || strlen($teacherPassword) < 10) {
+            throw new RuntimeException('Seed passwords must be at least 10 characters.');
+        }
+
+        $superadmin = $this->upsertShieldUser('superadmin', 'superadmin@example.test', $superPassword, 'superadmin');
+        $teacher    = $this->upsertShieldUser('guru.demo', 'guru@example.test', $teacherPassword, 'teacher');
 
         $teacherModel = new TeacherModel();
         $row = $teacherModel->where('email', 'guru@example.test')->first();
@@ -49,6 +72,10 @@ class AuthUserSeeder extends Seeder
             $user->setPassword($password);
             $users->save($user);
             $user = $users->findById($users->getInsertID());
+        } else {
+            // Rotate hash when re-seeding with a new env password (e.g. after credential leak).
+            $user->setPassword($password);
+            $users->save($user);
         }
 
         if (! $user->isActivated()) {

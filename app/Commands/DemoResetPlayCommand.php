@@ -39,7 +39,7 @@ class DemoResetPlayCommand extends BaseCommand
         CLI::write('Room UUID    : ' . $room['uuid']);
         CLI::write('Join         : http://127.0.0.1:8090/join/' . $room['pin']);
         CLI::write('Teacher login: http://127.0.0.1:8090/login');
-        CLI::write('  user/pass  : guru.demo / Kuat!7284MVP');
+        CLI::write('  (gunakan kredensial dari .env SEED_TEACHER_PASSWORD — jangan hardcode)');
         CLI::write('Teacher room : http://127.0.0.1:8090/teacher/games/' . $room['uuid']);
         CLI::write('Projector    : http://127.0.0.1:8090/game/' . $room['uuid'] . '/projector');
         CLI::write('Langkah: buka Join di 2 tab/device (TIM A & TIM B), lalu Start dari halaman guru.');

@@ -55,9 +55,9 @@
 <?= $this->section('scripts') ?>
 <script>
 UlarTangga.controller({
-    roomUuid: <?= json_encode($room['uuid']) ?>,
-    teamUuid: <?= json_encode($teamUuid) ?>,
-    snapshot: <?= json_encode($snapshot, JSON_UNESCAPED_SLASHES) ?>
+    roomUuid: <?= json_encode($room['uuid'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+    teamUuid: <?= json_encode($teamUuid, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+    snapshot: <?= json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
 });
 </script>
 <?= $this->endSection() ?>
