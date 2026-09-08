@@ -64,7 +64,7 @@ $baseUrl = '/teacher/games/' . $room['public_uuid'] . '/report';
 
 <section class="panel" style="margin-top:16px">
     <h2>Grafik</h2>
-    <?php if ($report['charts']['accuracy']['labels'] === [] && $report['charts']['team_results']['labels'] === []): ?>
+    <?php if ($report['answers'] === []): ?>
         <p class="muted">Belum ada data untuk grafik.</p>
     <?php else: ?>
         <div class="report-charts">
@@ -151,11 +151,11 @@ $baseUrl = '/teacher/games/' . $room['public_uuid'] . '/report';
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>
-<?php if (($report['charts']['accuracy']['labels'] ?? []) !== [] || ($report['charts']['team_results']['labels'] ?? []) !== []): ?>
+<?php if ($report['answers'] !== []): ?>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 (function () {
-    var charts = <?= json_encode($report['charts'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    var charts = <?= json_encode($report['charts'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     var acc = document.getElementById('chart-accuracy');
     if (acc && charts.accuracy && charts.accuracy.labels.length) {
         new Chart(acc, {
