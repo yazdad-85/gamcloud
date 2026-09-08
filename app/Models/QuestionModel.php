@@ -12,6 +12,7 @@ class QuestionModel extends Model
     protected $allowedFields = [
         'public_uuid',
         'owner_teacher_id',
+        'topic_id',
         'source_type',
         'question_type',
         'stem',
