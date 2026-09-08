@@ -165,3 +165,129 @@
 .fx-die-face[data-value="6"] .fx-die-pip:nth-child(9) {
     opacity: 1;
 }
+
+.fx-banner {
+    animation: fxBannerPop .3s ease-out;
+    background: rgba(15, 23, 42, .92);
+    border: 1px solid rgba(255, 255, 255, .28);
+    border-radius: 12px;
+    box-shadow: 0 26px 70px rgba(0, 0, 0, .4);
+    color: #ffffff;
+    display: grid;
+    gap: 6px;
+    justify-items: center;
+    left: 50%;
+    padding: 26px 34px;
+    position: fixed;
+    text-align: center;
+    top: 28%;
+    transform: translate(-50%, -50%);
+    z-index: 45;
+}
+
+.fx-banner.hidden {
+    display: none;
+}
+
+.fx-banner-icon {
+    font-size: 44px;
+    line-height: 1;
+}
+
+.fx-banner strong {
+    font-size: clamp(28px, 4vw, 46px);
+}
+
+.fx-banner-body {
+    color: #cbd5e1;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.fx-banner-correct {
+    background: rgba(20, 83, 45, .94);
+}
+
+.fx-banner-wrong {
+    background: rgba(127, 29, 29, .94);
+}
+
+.fx-banner-bonus {
+    background: rgba(120, 53, 15, .94);
+}
+
+.fx-banner-trap {
+    background: rgba(127, 29, 29, .94);
+}
+
+.fx-banner-mystery {
+    background: rgba(88, 28, 135, .94);
+}
+
+.fx-banner-safe {
+    background: rgba(30, 64, 175, .94);
+}
+
+.fx-banner-winner {
+    background: rgba(120, 53, 15, .96);
+}
+
+@keyframes fxBannerPop {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -46%) scale(.94);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.fx-tile-icon {
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .4));
+    font-size: 40px;
+    line-height: 1;
+    pointer-events: none;
+    position: fixed;
+    z-index: 42;
+}
+
+.fx-tile-icon-bonus {
+    color: #facc15;
+}
+
+.fx-tile-icon-trap {
+    color: #ef4444;
+}
+
+.fx-tile-icon-mystery {
+    color: #c084fc;
+}
+
+.fx-tile-icon-safe {
+    color: #60a5fa;
+}
+
+.fx-screen-flash {
+    inset: 0;
+    pointer-events: none;
+    position: fixed;
+    z-index: 38;
+}
+
+.fx-screen-flash-danger {
+    background: radial-gradient(circle, transparent 40%, rgba(239, 68, 68, .45) 100%);
+}
+
+.fx-confetti-piece {
+    background: #f97316;
+    border-radius: 2px;
+    height: 12px;
+    left: 0;
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    width: 8px;
+    z-index: 40;
+}

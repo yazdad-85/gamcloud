@@ -221,6 +221,120 @@
         return state.rollPromise;
     }
 
+    var CONFETTI_COLORS = ['#f97316', '#22c55e', '#facc15', '#38bdf8', '#f472b6', '#a78bfa'];
+
+    var ICONS = {
+        check: '<svg viewBox="0 0 24 24" width="40" height="40"><path fill="currentColor" d="M9 16.17 4.83 12l-1.42 1.41L9 19l12-12-1.41-1.41z"/></svg>',
+        cross: '<svg viewBox="0 0 24 24" width="40" height="40"><path fill="currentColor" d="m12 10.59 4.95-4.95 1.41 1.41L13.41 12l4.95 4.95-1.41 1.41L12 13.41l-4.95 4.95-1.41-1.41L10.59 12 5.64 7.05l1.41-1.41z"/></svg>',
+        shield: '<svg viewBox="0 0 24 24" width="36" height="36"><path fill="currentColor" d="M12 2 20 5v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5Z"/></svg>',
+        bonus: '★',
+        trap: '⚠',
+        mystery: '?',
+        winner: '🏆',
+    };
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function fxBannerEl() {
+        var el = document.querySelector('[data-fx-banner]');
+        if (!el) {
+            el = document.createElement('div');
+            el.setAttribute('data-fx-banner', '');
+            el.className = 'fx-banner hidden';
+            document.body.appendChild(el);
+        }
+        return el;
+    }
+
+    function showFxBanner(opts) {
+        var el = fxBannerEl();
+        el.className = 'fx-banner fx-banner-' + opts.tone;
+        el.innerHTML = '<span class="fx-banner-icon">' + opts.icon + '</span>' +
+            '<strong>' + escapeHtml(opts.title) + '</strong>' +
+            (opts.body ? '<span class="fx-banner-body">' + escapeHtml(opts.body) + '</span>' : '');
+
+        return new Promise(function (resolve) {
+            window.setTimeout(function () {
+                el.classList.add('hidden');
+                resolve();
+            }, opts.durationMs || 2000);
+        });
+    }
+
+    function confettiBurst(x, y, count) {
+        var pieceCount = count || 32;
+        for (var i = 0; i < pieceCount; i++) {
+            (function () {
+                var piece = document.createElement('div');
+                piece.className = 'fx-confetti-piece';
+                piece.style.left = x + 'px';
+                piece.style.top = y + 'px';
+                piece.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+                document.body.appendChild(piece);
+
+                var angle = Math.random() * Math.PI * 2;
+                var distance = 90 + Math.random() * 140;
+                var dx = Math.cos(angle) * distance;
+                var dy = Math.sin(angle) * distance - 40;
+                var rotate = Math.random() * 720 - 360;
+                var duration = 900 + Math.random() * 500;
+
+                var animation = piece.animate([
+                    {transform: 'translate(-50%, -50%) translate(0, 0) rotate(0deg)', opacity: 1},
+                    {transform: 'translate(-50%, -50%) translate(' + dx + 'px, ' + (dy + 180) + 'px) rotate(' + rotate + 'deg)', opacity: 0},
+                ], {duration: duration, easing: 'cubic-bezier(.25,.65,.4,1)'});
+
+                animation.finished.catch(function () { return null; }).finally(function () {
+                    piece.remove();
+                });
+            })();
+        }
+
+        return new Promise(function (resolve) {
+            window.setTimeout(resolve, 1500);
+        });
+    }
+
+    function burstIcon(x, y, icon, tone) {
+        var el = document.createElement('div');
+        el.className = 'fx-tile-icon fx-tile-icon-' + tone;
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+        el.innerHTML = icon;
+        document.body.appendChild(el);
+
+        var animation = el.animate([
+            {transform: 'translate(-50%, -50%) scale(.4)', opacity: 0},
+            {transform: 'translate(-50%, -65%) scale(1.15)', opacity: 1, offset: .35},
+            {transform: 'translate(-50%, -80%) scale(1)', opacity: 0},
+        ], {duration: 1000, easing: 'ease-out'});
+
+        return animation.finished.catch(function () { return null; }).finally(function () {
+            el.remove();
+        });
+    }
+
+    function flashScreen(tone) {
+        var el = document.createElement('div');
+        el.className = 'fx-screen-flash fx-screen-flash-' + tone;
+        document.body.appendChild(el);
+
+        var animation = el.animate([
+            {opacity: 0}, {opacity: 1, offset: .15}, {opacity: 0},
+        ], {duration: 500, easing: 'ease-out'});
+
+        animation.finished.catch(function () { return null; }).finally(function () {
+            el.remove();
+        });
+    }
+
     window.GameFx = {
         sound: {
             unlock: unlockSound,
@@ -228,5 +342,7 @@
         mountDie: mountDie,
         setDieResting: setDieResting,
         rollDie: rollDie,
+        confettiBurst: confettiBurst,
+        banner: showFxBanner,
     };
 })();
