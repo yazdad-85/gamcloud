@@ -959,6 +959,22 @@ textarea {
     width: min(100%, calc(100vh - 36px));
 }
 
+.board::before {
+    background-color: var(--board-accent, #f97316);
+    content: "";
+    inset: 0;
+    -webkit-mask-image: var(--board-icon);
+    mask-image: var(--board-icon);
+    -webkit-mask-repeat: repeat;
+    mask-repeat: repeat;
+    -webkit-mask-size: 46px 46px;
+    mask-size: 46px 46px;
+    opacity: .07;
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+}
+
 .board-grid {
     display: grid;
     gap: 4px;
@@ -966,6 +982,7 @@ textarea {
     height: 100%;
     position: relative;
     width: 100%;
+    z-index: 1;
 }
 
 .board-path-layer {
