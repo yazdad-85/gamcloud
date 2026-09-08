@@ -18,6 +18,10 @@ class JoinController extends BaseController
 
     public function join()
     {
+        if ((string) $this->request->getPost('rules_accepted') !== '1') {
+            return redirect()->back()->withInput()->with('error', 'Centang persetujuan aturan permainan sebelum masuk.');
+        }
+
         $pin = strtoupper(trim((string) $this->request->getPost('pin')));
         $teamName = trim((string) $this->request->getPost('team_name'));
         $avatar = trim((string) $this->request->getPost('avatar'));

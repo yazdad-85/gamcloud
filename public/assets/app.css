@@ -494,6 +494,16 @@ textarea {
     width: 100%;
 }
 
+.rules-box {
+    background: rgba(15, 23, 42, .04);
+    border-radius: 12px;
+    margin: 0 0 1rem;
+    padding: 12px 14px;
+}
+.rules-box h2 { font-size: 1rem; margin: 0 0 .5rem; }
+.rules-box ul { margin: 0; padding-left: 1.1rem; }
+.rules-box li { margin: 0 0 .35rem; }
+
 .login-landing {
     background: #10251f url("/assets/images/teacher-quiz-hero-v2.png") center / cover no-repeat;
     border-radius: 8px;
