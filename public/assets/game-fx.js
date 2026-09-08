@@ -104,9 +104,129 @@
         }
     }
 
+    var FACE_NAMES = {1: 'front', 2: 'right', 3: 'top', 4: 'bottom', 5: 'left', 6: 'back'};
+
+    var DIE_FACE_ROTATIONS = {
+        1: {x: 0, y: 0},
+        2: {x: 0, y: -90},
+        3: {x: -90, y: 0},
+        4: {x: 90, y: 0},
+        5: {x: 0, y: 90},
+        6: {x: 0, y: 180},
+    };
+
+    var dieStates = new WeakMap();
+
+    function buildDieFaceHtml(value) {
+        var pips = '';
+        for (var i = 0; i < 9; i++) {
+            pips += '<span class="fx-die-pip"></span>';
+        }
+        return '<div class="fx-die-face fx-die-face-' + FACE_NAMES[value] + '" data-value="' + value + '">' + pips + '</div>';
+    }
+
+    function mountDie(containerEl) {
+        if (dieStates.has(containerEl)) {
+            return dieStates.get(containerEl);
+        }
+
+        containerEl.innerHTML = '<div class="fx-die-scene"><div class="fx-die-cube">' +
+            [1, 2, 3, 4, 5, 6].map(buildDieFaceHtml).join('') +
+            '</div></div>';
+
+        var state = {
+            cube: containerEl.querySelector('.fx-die-cube'),
+            rx: 0,
+            ry: 0,
+            raf: null,
+            rolling: false,
+            currentValue: null,
+        };
+        dieStates.set(containerEl, state);
+
+        return state;
+    }
+
+    function getDieState(containerEl) {
+        return dieStates.get(containerEl) || mountDie(containerEl);
+    }
+
+    function tumbleTick(state) {
+        state.rx = (state.rx + 41) % 360;
+        state.ry = (state.ry + 29) % 360;
+        state.cube.classList.remove('settling');
+        state.cube.style.transform = 'rotateX(' + state.rx + 'deg) rotateY(' + state.ry + 'deg)';
+        state.raf = window.requestAnimationFrame(function () {
+            tumbleTick(state);
+        });
+    }
+
+    function settleOnValue(state, value) {
+        var target = DIE_FACE_ROTATIONS[value] || DIE_FACE_ROTATIONS[1];
+        state.cube.classList.add('settling');
+        state.cube.style.transform = 'rotateX(' + (target.x + 720) + 'deg) rotateY(' + (target.y + 720) + 'deg)';
+        state.rx = ((target.x % 360) + 360) % 360;
+        state.ry = ((target.y % 360) + 360) % 360;
+        state.currentValue = value;
+    }
+
+    function setDieResting(containerEl, value) {
+        var state = getDieState(containerEl);
+        if (state.rolling) {
+            return;
+        }
+        var target = value ? Number(value) : (state.currentValue || 1);
+        if (state.currentValue === target) {
+            return;
+        }
+        settleOnValue(state, target);
+    }
+
+    function rollDie(containerEl, options) {
+        var state = getDieState(containerEl);
+        if (state.rolling) {
+            return state.rollPromise;
+        }
+
+        var minDurationMs = (options && options.minDurationMs) || 1200;
+        var resultPromise = Promise.resolve(options && options.resultPromise).then(function (value) {
+            return value == null ? (state.currentValue || 1) : value;
+        });
+
+        state.rolling = true;
+        window.cancelAnimationFrame(state.raf);
+        tumbleTick(state);
+
+        var waitMinDuration = new Promise(function (resolve) {
+            window.setTimeout(resolve, minDurationMs);
+        });
+
+        state.rollPromise = Promise.all([resultPromise.catch(function () { return null; }), waitMinDuration]).then(function (results) {
+            var value = results[0];
+            window.cancelAnimationFrame(state.raf);
+            var finalValue = value == null ? (state.currentValue || 1) : Number(value);
+            settleOnValue(state, finalValue);
+            if (value != null) {
+                playSoundSafe('dice');
+            }
+            return new Promise(function (resolve) {
+                window.setTimeout(function () {
+                    state.rolling = false;
+                    state.rollPromise = null;
+                    resolve(finalValue);
+                }, 560);
+            });
+        });
+
+        return state.rollPromise;
+    }
+
     window.GameFx = {
         sound: {
             unlock: unlockSound,
         },
+        mountDie: mountDie,
+        setDieResting: setDieResting,
+        rollDie: rollDie,
     };
 })();
