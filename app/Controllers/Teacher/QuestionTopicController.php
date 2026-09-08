@@ -1,0 +1,55 @@
+<?php
+
+namespace App\Controllers\Teacher;
+
+use App\Controllers\BaseController;
+use App\Models\QuestionModel;
+use App\Models\QuestionTopicModel;
+use App\Models\TeacherModel;
+use App\Services\Game\Uuid;
+use App\Services\Security\TenantContext;
+
+class QuestionTopicController extends BaseController
+{
+    public function store()
+    {
+        $tenant = new TenantContext();
+        $teacherId = $tenant->isSuperadmin()
+            ? (int) $this->request->getPost('owner_teacher_id')
+            : $tenant->teacherId();
+
+        if ($teacherId < 1 || (new TeacherModel())->find($teacherId) === null) {
+            return redirect()->back()->with('error', 'Pilih guru pemilik topik yang valid.');
+        }
+
+        $name = trim((string) $this->request->getPost('name'));
+        if ($name === '') {
+            return redirect()->back()->with('error', 'Nama topik wajib diisi.');
+        }
+        if (strlen($name) > 140) {
+            $name = substr($name, 0, 140);
+        }
+
+        (new QuestionTopicModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'owner_teacher_id' => $teacherId,
+            'name' => $name,
+        ]);
+
+        return redirect()->to('/teacher/questions')->with('message', 'Topik "' . $name . '" berhasil dibuat.');
+    }
+
+    public function destroy(string $topicUuid)
+    {
+        $tenant = new TenantContext();
+        $topic = (new QuestionTopicModel())->where('public_uuid', $topicUuid)->first();
+        if ($topic === null || (! $tenant->isSuperadmin() && (int) $topic['owner_teacher_id'] !== $tenant->teacherId())) {
+            return redirect()->back()->with('error', 'Topik tidak ditemukan.');
+        }
+
+        (new QuestionModel())->where('topic_id', $topic['id'])->set(['topic_id' => null])->update();
+        (new QuestionTopicModel())->delete($topic['id']);
+
+        return redirect()->to('/teacher/questions')->with('message', 'Topik "' . $topic['name'] . '" dihapus. Soal di dalamnya tetap ada, sekarang jadi Tanpa Topik.');
+    }
+}
