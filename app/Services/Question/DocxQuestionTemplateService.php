@@ -92,7 +92,7 @@ class DocxQuestionTemplateService
             '',
             'Aturan singkat:',
             '- Tulis nomor soal dengan format: 1. Pertanyaan',
-            '- Opsi boleh A sampai H.',
+            '- Gunakan opsi A sampai E untuk soal pilihan ganda.',
             '- Tandai jawaban benar dengan * di depan opsi, atau tulis Jawaban/Kunci di bawah opsi.',
             '- Gunakan [EASY], [MEDIUM], [HARD] untuk difficulty.',
             '- Gunakan [TRUE_FALSE] untuk soal benar/salah.',
@@ -103,12 +103,14 @@ class DocxQuestionTemplateService
             '*B. Mars',
             'C. Jupiter',
             'D. Merkurius',
+            'E. Saturnus',
             '',
             '2. [MEDIUM] Ibu kota Indonesia saat ini adalah ...',
             'A. Bandung',
             'B. Surabaya',
             'C. Yogyakarta',
             'D. Jakarta',
+            'E. Medan',
             'Jawaban: D',
             '',
             '3. [TRUE_FALSE] Air mendidih pada suhu 100 derajat Celcius.',
@@ -119,6 +121,7 @@ class DocxQuestionTemplateService
             'B. Pilihan kedua (benar)',
             'C. Pilihan ketiga',
             'D. Pilihan keempat',
+            'E. Pilihan kelima',
         ];
 
         $body = '';

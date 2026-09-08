@@ -3,6 +3,7 @@
 namespace App\Services\Security;
 
 use App\Models\GameRoomModel;
+use App\Models\QuestionModel;
 use App\Models\QuestionTopicModel;
 use App\Models\TeacherModel;
 use CodeIgniter\Exceptions\PageNotFoundException;
@@ -64,5 +65,23 @@ class TenantContext
         }
 
         return $topic;
+    }
+
+    public function assertQuestionOwner(string $questionUuid): array
+    {
+        $question = (new QuestionModel())->where('public_uuid', $questionUuid)->first();
+        if ($question === null) {
+            throw PageNotFoundException::forPageNotFound('Soal tidak ditemukan.');
+        }
+
+        if ($this->isSuperadmin()) {
+            return $question;
+        }
+
+        if ((int) $question['owner_teacher_id'] !== $this->teacherId()) {
+            throw PageNotFoundException::forPageNotFound('Soal tidak ditemukan.');
+        }
+
+        return $question;
     }
 }

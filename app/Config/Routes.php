@@ -19,8 +19,13 @@ $routes->post('register', 'Public\TeacherRegistrationController::store', ['filte
 
 $routes->get('teacher', 'Teacher\DashboardController::index', ['filter' => 'teacherAccess']);
 $routes->get('teacher/questions', 'Teacher\QuestionController::index', ['filter' => 'teacherAccess']);
+$routes->get('teacher/questions/create', 'Teacher\QuestionController::create', ['filter' => 'teacherAccess']);
+$routes->post('teacher/questions', 'Teacher\QuestionController::store', ['filter' => ['teacherAccess', 'rateLimit:30,300,question-write']]);
 $routes->get('teacher/questions/template-docx', 'Teacher\QuestionController::templateDocx', ['filter' => 'teacherAccess']);
 $routes->post('teacher/questions/import-docx', 'Teacher\QuestionController::importDocx', ['filter' => ['teacherAccess', 'rateLimit:5,300,question-import-docx']]);
+$routes->get('teacher/questions/(:segment)/edit', 'Teacher\QuestionController::edit/$1', ['filter' => 'teacherAccess']);
+$routes->post('teacher/questions/(:segment)/update', 'Teacher\QuestionController::update/$1', ['filter' => ['teacherAccess', 'rateLimit:30,300,question-write']]);
+$routes->post('teacher/questions/(:segment)/delete', 'Teacher\QuestionController::delete/$1', ['filter' => ['teacherAccess', 'rateLimit:20,300,question-delete']]);
 $routes->post('teacher/topics', 'Teacher\QuestionTopicController::store', ['filter' => 'teacherAccess']);
 $routes->post('teacher/topics/(:segment)/delete', 'Teacher\QuestionTopicController::destroy/$1', ['filter' => 'teacherAccess']);
 $routes->get('teacher/games', 'Teacher\GameController::index', ['filter' => 'teacherAccess']);
