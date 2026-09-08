@@ -20,7 +20,7 @@
     <p class="muted">Kelompokkan bank soal supaya lebih mudah dikelola.</p>
     <div class="check-grid">
         <a class="check-option" href="/teacher/questions" style="text-decoration:none">
-            <span>Semua Soal (<?= esc((string) count($questions)) ?>)</span>
+            <span>Semua Soal (<?= esc((string) $pagination['total']) ?>)</span>
         </a>
         <a class="check-option" href="/teacher/questions?topic=none" style="text-decoration:none">
             <span>Tanpa Topik</span>
@@ -153,4 +153,16 @@ Jawaban: Benar</pre>
         </article>
     <?php endif ?>
 </section>
+
+<?php if ($pagination['total'] > 0): ?>
+    <div class="pagination-bar">
+        <p class="muted">
+            Menampilkan <?= esc((string) $pagination['from']) ?>-<?= esc((string) $pagination['to']) ?>
+            dari <?= esc((string) $pagination['total']) ?> soal
+        </p>
+        <?php if ($pagination['page_count'] > 1): ?>
+            <?= $pager->links('questions') ?>
+        <?php endif ?>
+    </div>
+<?php endif ?>
 <?= $this->endSection() ?>

@@ -35,7 +35,13 @@ class QuestionController extends BaseController
             $questionQuery->where('topic_id', $filterTopic['id'] ?? 0);
         }
 
-        $questions = $questionQuery->findAll();
+        $questions = $questionQuery->paginate(12, 'questions');
+        $pager = $questionQuery->pager;
+        $pager->only(['topic']);
+
+        $totalQuestions = $pager->getTotal('questions');
+        $currentPage = $pager->getCurrentPage('questions');
+        $perPage = $pager->getPerPage('questions');
         $options = [];
         $optionModel = new QuestionOptionModel();
 
@@ -48,6 +54,13 @@ class QuestionController extends BaseController
         return view('teacher/questions/index', [
             'questions' => $questions,
             'options' => $options,
+            'pager' => $pager,
+            'pagination' => [
+                'total' => $totalQuestions,
+                'from' => $totalQuestions > 0 ? (($currentPage - 1) * $perPage) + 1 : 0,
+                'to' => min($currentPage * $perPage, $totalQuestions),
+                'page_count' => $pager->getPageCount('questions'),
+            ],
             'isSuperadmin' => $tenant->isSuperadmin(),
             'teachers' => $tenant->isSuperadmin() ? (new TeacherModel())->orderBy('name', 'ASC')->findAll() : [],
             'topics' => $topics,

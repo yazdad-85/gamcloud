@@ -846,6 +846,66 @@ textarea {
     color: #166534;
 }
 
+.pagination-bar {
+    align-items: center;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    margin-top: 18px;
+}
+
+.pagination-bar .muted {
+    margin: 0;
+}
+
+.pagination {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.pagination a {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    display: inline-flex;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 38px;
+    min-width: 38px;
+    padding: 7px 10px;
+    text-decoration: none;
+}
+
+.pagination a:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.pagination .active a {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+}
+
+@media (max-width: 720px) {
+    .pagination-bar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .pagination {
+        justify-content: flex-start;
+    }
+}
+
 .import-panel {
     display: grid;
     gap: 18px;
