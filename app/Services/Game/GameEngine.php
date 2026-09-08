@@ -52,6 +52,10 @@ class GameEngine
             throw new DomainException('Board template belum tersedia. Jalankan seeder demo lebih dulu.');
         }
 
+        if (isset($options['mystery_tile_count'])) {
+            $board = $this->applyMysteryTileCount($board, (int) $options['mystery_tile_count']);
+        }
+
         $pin = $this->uniquePin();
         $now = date('Y-m-d H:i:s');
         $turnOrderMode = $this->validOption((string) ($options['turn_order_mode'] ?? 'random'), ['random', 'join_order'], 'random');
@@ -1262,6 +1266,65 @@ class GameEngine
         }
 
         return null;
+    }
+
+    private function applyMysteryTileCount(array $board, int $mysteryCount): array
+    {
+        $mysteryCount = max(0, min(6, $mysteryCount));
+        $allTiles = json_decode((string) ($board['special_tiles_json'] ?? ''), true);
+        if (! is_array($allTiles)) {
+            $allTiles = [];
+        }
+
+        $nonMysteryTiles = array_values(array_filter(
+            $allTiles,
+            static fn ($tile): bool => is_array($tile) && strtoupper((string) ($tile['type'] ?? '')) !== 'MYSTERY',
+        ));
+        $currentMysteryCount = count($allTiles) - count($nonMysteryTiles);
+
+        if ($mysteryCount === $currentMysteryCount) {
+            return $board;
+        }
+
+        $tileCount = (int) $board['tile_count'];
+        $occupied = [];
+        foreach ($nonMysteryTiles as $tile) {
+            $occupied[(int) $tile['tile']] = true;
+        }
+        foreach (json_decode((string) $board['ladders_json'], true) ?: [] as $ladder) {
+            $occupied[(int) $ladder['from']] = true;
+            $occupied[(int) $ladder['to']] = true;
+        }
+        foreach (json_decode((string) $board['snakes_json'], true) ?: [] as $snake) {
+            $occupied[(int) $snake['from']] = true;
+            $occupied[(int) $snake['to']] = true;
+        }
+
+        $pool = [];
+        for ($tile = 2; $tile < $tileCount; $tile++) {
+            if (! isset($occupied[$tile])) {
+                $pool[] = $tile;
+            }
+        }
+        shuffle($pool);
+        $newMysteryTiles = array_map(
+            static fn (int $tile): array => ['tile' => $tile, 'type' => 'MYSTERY', 'label' => 'Misteri'],
+            array_slice($pool, 0, $mysteryCount),
+        );
+
+        $newSpecialTiles = array_merge($nonMysteryTiles, $newMysteryTiles);
+        $newBoardId = (new BoardTemplateModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'name' => $board['name'] . ' (Room)',
+            'tile_count' => $tileCount,
+            'ladders_json' => $board['ladders_json'],
+            'snakes_json' => $board['snakes_json'],
+            'special_tiles_json' => json_encode($newSpecialTiles, JSON_UNESCAPED_SLASHES),
+            'theme_json' => $board['theme_json'],
+            'status' => 'ROOM_INSTANCE',
+        ], true);
+
+        return (new BoardTemplateModel())->find($newBoardId);
     }
 
     private function teamEffects(array $team): array

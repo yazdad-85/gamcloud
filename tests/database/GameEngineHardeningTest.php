@@ -652,6 +652,40 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $engine->deleteRoom($room['uuid']);
     }
 
+    public function testCreateRoomPlacesRequestedNumberOfMysteryTiles(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Count Test', [
+            'mystery_tile_count' => 4,
+        ])['room'];
+
+        $usedBoardId = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
+        $board = (new BoardTemplateModel())->find($usedBoardId);
+        $tiles = json_decode((string) $board['special_tiles_json'], true);
+        $mysteryTiles = array_values(array_filter($tiles, static fn (array $tile): bool => $tile['type'] === 'MYSTERY'));
+
+        $this->assertCount(4, $mysteryTiles);
+        $this->assertSame('ROOM_INSTANCE', $board['status']);
+
+        $positions = array_map(static fn (array $tile): int => (int) $tile['tile'], $tiles);
+        $this->assertSame($positions, array_values(array_unique($positions)));
+    }
+
+    public function testCreateRoomKeepsOriginalBoardWhenMysteryCountUnchanged(): void
+    {
+        $sourceBoard = (new BoardTemplateModel())->where('status', 'ACTIVE')->orderBy('id', 'ASC')->first();
+        $sourceTiles = json_decode((string) $sourceBoard['special_tiles_json'], true);
+        $defaultMysteryCount = count(array_filter($sourceTiles, static fn (array $tile): bool => $tile['type'] === 'MYSTERY'));
+
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Default Test', [
+            'mystery_tile_count' => $defaultMysteryCount,
+        ])['room'];
+
+        $usedBoardId = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
+        $this->assertSame((int) $sourceBoard['id'], (int) $usedBoardId);
+    }
+
     private function roomId(string $roomUuid): int
     {
         $room = (new GameRoomModel())->where('public_uuid', $roomUuid)->first();

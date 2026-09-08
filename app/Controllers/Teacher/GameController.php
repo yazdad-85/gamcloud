@@ -80,6 +80,11 @@ class GameController extends BaseController
             $boardTemplateId = null;
         }
 
+        $mysteryTileCount = $this->request->getPost('mystery_tile_count');
+        $mysteryTileCount = $mysteryTileCount === null || $mysteryTileCount === ''
+            ? null
+            : max(0, min(6, (int) $mysteryTileCount));
+
         $modeCatalog = new GameModeCatalog();
         $gameMode = strtoupper((string) $this->request->getPost('game_mode'));
         if (! in_array($gameMode, $modeCatalog->playableKeys(), true)) {
@@ -102,6 +107,7 @@ class GameController extends BaseController
             'board_template_id' => $boardTemplateId,
             'turn_order_mode' => $turnOrderMode,
             'finish_rule' => $finishRule,
+            'mystery_tile_count' => $mysteryTileCount,
             'skip_quota' => $tenant->isSuperadmin(),
             'question_selection' => [
                 'strategy' => $questionStrategy,

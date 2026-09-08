@@ -141,6 +141,11 @@
             <p class="field-help">Tema memengaruhi suasana papan (warna, ular, tangga), bukan mengganti soal satu per satu.</p>
         </div>
         <div class="field">
+            <label for="mystery_tile_count">Jumlah Kotak Mystery</label>
+            <input type="number" id="mystery_tile_count" name="mystery_tile_count" min="0" max="6" value="<?= esc((string) old('mystery_tile_count', 2)) ?>">
+            <p class="field-help">Kotak Mystery ditempatkan acak di papan saat room dibuat, tidak menumpuk dengan kotak spesial lain.</p>
+        </div>
+        <div class="field">
             <label for="turn_order_mode">Giliran Pertama</label>
             <select id="turn_order_mode" name="turn_order_mode">
                 <option value="random" <?= old('turn_order_mode', 'random') === 'random' ? 'selected' : '' ?>>Acak otomatis</option>
