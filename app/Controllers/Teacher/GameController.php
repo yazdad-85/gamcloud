@@ -32,10 +32,10 @@ class GameController extends BaseController
         $tenant = new TenantContext();
         $engine = new GameEngine();
         $teachers = $tenant->isSuperadmin() ? (new TeacherModel())->orderBy('name', 'ASC')->findAll() : [];
-        $questionBankSummaries = [];
+        $questionTopicCatalogs = [];
         if ($tenant->isSuperadmin()) {
             foreach ($teachers as $teacher) {
-                $questionBankSummaries[(int) $teacher['id']] = $engine->questionBankSummary((int) $teacher['id']);
+                $questionTopicCatalogs[(int) $teacher['id']] = $engine->questionTopicCatalog((int) $teacher['id']);
             }
         }
 
@@ -44,8 +44,8 @@ class GameController extends BaseController
             'teachers' => $teachers,
             'boards' => (new BoardTemplateModel())->where('status', 'ACTIVE')->orderBy('name', 'ASC')->findAll(),
             'gameModes' => (new GameModeCatalog())->options(),
-            'questionBankSummary' => $tenant->isSuperadmin() ? null : $engine->questionBankSummary($tenant->teacherId()),
-            'questionBankSummaries' => $questionBankSummaries,
+            'questionTopicCatalog' => $tenant->isSuperadmin() ? [] : $engine->questionTopicCatalog($tenant->teacherId()),
+            'questionTopicCatalogs' => $questionTopicCatalogs,
         ]);
     }
 
@@ -81,9 +81,10 @@ class GameController extends BaseController
         }
 
         $mysteryTileCount = $this->request->getPost('mystery_tile_count');
-        $mysteryTileCount = $mysteryTileCount === null || $mysteryTileCount === ''
-            ? null
-            : max(0, min(6, (int) $mysteryTileCount));
+        if (! is_scalar($mysteryTileCount) || preg_match('/^[0-6]$/', (string) $mysteryTileCount) !== 1) {
+            return redirect()->back()->withInput()->with('error', 'Jumlah Kotak Mystery wajib dipilih antara 0 sampai 6.');
+        }
+        $mysteryTileCount = (int) $mysteryTileCount;
 
         $boardSize = (string) $this->request->getPost('board_size');
         if (! in_array($boardSize, ['50', '70', '100'], true)) {
@@ -107,25 +108,33 @@ class GameController extends BaseController
             $questionStrategy = 'difficulty_zone';
         }
 
-        $snapshot = $engine->createRoom($teacherId, $title, [
-            'game_mode' => $gameMode,
-            'board_template_id' => $boardTemplateId,
-            'turn_order_mode' => $turnOrderMode,
-            'finish_rule' => $finishRule,
-            'mystery_tile_count' => $mysteryTileCount,
-            'board_size' => (int) $boardSize,
-            'skip_quota' => $tenant->isSuperadmin(),
-            'question_selection' => [
-                'strategy' => $questionStrategy,
-            ],
-            'scoring' => [
-                'time_bonus' => $this->request->getPost('time_bonus') === '1',
-                'streak_bonus' => $this->request->getPost('streak_bonus') === '1',
-                'near_finish_bonus' => $this->request->getPost('near_finish_bonus') === '1',
-                'wrong_penalty' => $this->request->getPost('wrong_penalty') === '1',
-                'timeout_penalty' => $this->request->getPost('timeout_penalty') === '1',
-            ],
-        ]);
+        $questionTopicUuids = $this->request->getPost('question_topic_uuids');
+        $questionTopicUuids = is_array($questionTopicUuids) ? $questionTopicUuids : [];
+
+        try {
+            $snapshot = $engine->createRoom($teacherId, $title, [
+                'game_mode' => $gameMode,
+                'board_template_id' => $boardTemplateId,
+                'turn_order_mode' => $turnOrderMode,
+                'finish_rule' => $finishRule,
+                'mystery_tile_count' => $mysteryTileCount,
+                'board_size' => (int) $boardSize,
+                'skip_quota' => $tenant->isSuperadmin(),
+                'question_selection' => [
+                    'strategy' => $questionStrategy,
+                    'topic_uuids' => $questionTopicUuids,
+                ],
+                'scoring' => [
+                    'time_bonus' => $this->request->getPost('time_bonus') === '1',
+                    'streak_bonus' => $this->request->getPost('streak_bonus') === '1',
+                    'near_finish_bonus' => $this->request->getPost('near_finish_bonus') === '1',
+                    'wrong_penalty' => $this->request->getPost('wrong_penalty') === '1',
+                    'timeout_penalty' => $this->request->getPost('timeout_penalty') === '1',
+                ],
+            ]);
+        } catch (DomainException $error) {
+            return redirect()->back()->withInput()->with('error', $error->getMessage());
+        }
 
         return redirect()->to('/teacher/games/' . $snapshot['room']['uuid']);
     }

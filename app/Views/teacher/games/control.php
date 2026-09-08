@@ -26,7 +26,9 @@
         <p>State version: <strong data-state-version><?= esc((string) $room['state_version']) ?></strong></p>
         <p>Giliran: <strong data-current-team>-</strong></p>
         <p>Mode game: <strong><?= esc($snapshot['mode_state']['label'] ?? $room['game_mode'] ?? 'Ular Tangga Kuis') ?></strong></p>
+        <p>Kotak Mystery: <strong><?= esc((string) ($snapshot['board']['mystery_tile_count'] ?? 0)) ?></strong></p>
         <p>Pengambilan soal: <strong><?= esc(($room['question_selection']['strategy'] ?? 'difficulty_zone') === 'difficulty_zone' ? 'Zona difficulty' : 'Acak semua soal') ?></strong></p>
+        <p>Topik soal: <strong><?= esc(($room['question_selection']['topics'] ?? []) === [] ? 'Semua topik (room lama)' : implode(', ', array_column($room['question_selection']['topics'], 'name'))) ?></strong></p>
         <p>Mode giliran: <strong><?= esc(($room['turn_order_mode'] ?? 'random') === 'join_order' ? 'Urutan join' : 'Acak otomatis') ?></strong></p>
         <p>Aturan finish: <strong><?= esc(($room['finish_rule'] ?? 'clamp_finish') === 'exact_finish' ? 'Harus pas' : 'Langsung finish') ?></strong></p>
         <p>Bank soal: <strong><?= esc((string) ($snapshot['question_bank']['total'] ?? 0)) ?></strong> soal published</p>

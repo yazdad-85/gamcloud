@@ -8,6 +8,7 @@
         <p class="muted">PIN <strong><?= esc($room['pin']) ?></strong> / status <span data-room-status><?= esc($room['status']) ?></span></p>
         <p class="muted">
             Papan: <strong><?= esc((string) $snapshot['board']['tile_count']) ?> kotak</strong>
+            / Mystery: <strong><?= esc((string) ($snapshot['board']['mystery_tile_count'] ?? 0)) ?> kotak</strong>
             /
             Mode:
             <strong><?= esc($snapshot['mode_state']['label'] ?? $room['game_mode'] ?? 'Ular Tangga Kuis') ?></strong>
@@ -20,7 +21,9 @@
         <p class="muted">
             Soal:
             <strong><?= esc(($room['question_selection']['strategy'] ?? 'difficulty_zone') === 'difficulty_zone' ? 'Zona difficulty' : 'Acak semua soal') ?></strong>
-            / Total bank soal:
+            / Topik:
+            <strong><?= esc(($room['question_selection']['topics'] ?? []) === [] ? 'Semua topik (room lama)' : implode(', ', array_column($room['question_selection']['topics'], 'name'))) ?></strong>
+            / Total soal room:
             <strong><?= esc((string) ($snapshot['question_bank']['total'] ?? 0)) ?></strong>
         </p>
     </div>
@@ -83,13 +86,13 @@
 
 <section class="panel" style="margin-top:16px">
     <h2>Bank Soal Game</h2>
-    <p class="muted">Game mengambil soal published dari bank soal guru pemilik room.</p>
+    <p class="muted">Game hanya mengambil soal published dari topik yang dipilih saat room dibuat.</p>
     <div class="question-bank-metrics">
         <div><span>Total</span><strong><?= esc((string) ($snapshot['question_bank']['total'] ?? 0)) ?></strong></div>
         <div><span>Easy</span><strong><?= esc((string) ($snapshot['question_bank']['difficulty']['EASY'] ?? 0)) ?></strong></div>
         <div><span>Medium</span><strong><?= esc((string) ($snapshot['question_bank']['difficulty']['MEDIUM'] ?? 0)) ?></strong></div>
         <div><span>Hard</span><strong><?= esc((string) ($snapshot['question_bank']['difficulty']['HARD'] ?? 0)) ?></strong></div>
     </div>
-    <p class="field-help">Zona difficulty: kotak 1-30 EASY, 31-70 MEDIUM, 71-100 HARD. Jika stok zona kosong, game fallback ke soal published lain.</p>
+    <p class="field-help">Jika stok suatu difficulty kosong, game mengambil difficulty lain tetapi tetap berada dalam topik terpilih.</p>
 </section>
 <?= $this->endSection() ?>

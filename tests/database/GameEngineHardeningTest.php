@@ -9,6 +9,7 @@ use App\Models\GameTeamModel;
 use App\Models\GameTurnModel;
 use App\Models\QuestionModel;
 use App\Models\QuestionOptionModel;
+use App\Models\QuestionTopicModel;
 use App\Models\ScoreTransactionModel;
 use App\Services\Game\GameEngine;
 use App\Services\Game\Uuid;
@@ -96,6 +97,86 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame('HARD', $lastQuestion['payload']['selection']['requested_difficulty']);
         $this->assertContains($snapshot['current_turn']['question']['difficulty'], ['EASY', 'MEDIUM']);
         $this->assertContains($lastQuestion['payload']['selection']['selected_difficulty'], ['EASY', 'MEDIUM']);
+    }
+
+    public function testRoomOnlySelectsQuestionsFromChosenTopics(): void
+    {
+        $selectedTopic = $this->seedTopic(1, 'Topik Terpilih');
+        $otherTopic = $this->seedTopic(1, 'Topik Lain');
+        $selectedQuestionId = $this->seedTopicQuestion(1, $selectedTopic['id'], 'Soal khusus topik terpilih', 'EASY');
+        $this->seedTopicQuestion(1, $otherTopic['id'], 'Soal yang tidak boleh masuk', 'EASY');
+
+        $engine = new GameEngine();
+        $catalogItem = array_values(array_filter(
+            $engine->questionTopicCatalog(1),
+            static fn (array $topic): bool => $topic['uuid'] === $selectedTopic['public_uuid']
+        ))[0];
+        $this->assertSame(1, $catalogItem['summary']['total']);
+        $this->assertSame(1, $catalogItem['summary']['difficulty']['EASY']);
+
+        $room = $engine->createRoom(1, 'Topic Scope Test', [
+            'turn_order_mode' => 'join_order',
+            'question_selection' => [
+                'strategy' => 'random',
+                'topic_uuids' => [$selectedTopic['public_uuid']],
+            ],
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Topik')['team'];
+
+        $engine->start($room['uuid']);
+        $snapshot = $engine->roll($room['uuid'], $team['public_uuid']);
+
+        $this->assertSame('Soal khusus topik terpilih', $snapshot['current_turn']['question']['stem']);
+        $this->assertSame($selectedQuestionId, (int) (new GameTurnModel())
+            ->where('room_id', $this->roomId($room['uuid']))
+            ->orderBy('id', 'DESC')
+            ->first()['question_id']);
+        $this->assertSame([[
+            'uuid' => $selectedTopic['public_uuid'],
+            'name' => 'Topik Terpilih',
+        ]], $snapshot['room']['question_selection']['topics']);
+        $this->assertSame(1, $snapshot['question_bank']['total']);
+        $this->assertArrayNotHasKey('topic_ids', $snapshot['room']['question_selection']);
+    }
+
+    public function testDifficultyFallbackStaysInsideChosenTopic(): void
+    {
+        $selectedTopic = $this->seedTopic(1, 'Topik Easy Saja');
+        $otherTopic = $this->seedTopic(1, 'Topik Hard Lain');
+        $this->seedTopicQuestion(1, $selectedTopic['id'], 'Fallback tetap di topik ini', 'EASY');
+        $this->seedTopicQuestion(1, $otherTopic['id'], 'Hard dari topik lain', 'HARD');
+
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Topic Difficulty Fallback Test', [
+            'turn_order_mode' => 'join_order',
+            'question_selection' => [
+                'strategy' => 'difficulty_zone',
+                'topic_uuids' => [$selectedTopic['public_uuid']],
+            ],
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Fallback Topik')['team'];
+
+        $engine->start($room['uuid']);
+        (new GameTeamModel())->update($team['id'], ['position' => 80]);
+        $snapshot = $engine->roll($room['uuid'], $team['public_uuid']);
+
+        $this->assertSame('HARD', $this->lastEvent($this->roomId($room['uuid']), 'question.started')['payload']['selection']['requested_difficulty']);
+        $this->assertSame('Fallback tetap di topik ini', $snapshot['current_turn']['question']['stem']);
+        $this->assertSame('EASY', $snapshot['current_turn']['question']['difficulty']);
+    }
+
+    public function testRoomRejectsTopicOwnedByAnotherTeacher(): void
+    {
+        $foreignTopic = $this->seedTopic(999, 'Topik Guru Lain');
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Pilihan topik tidak valid');
+
+        (new GameEngine())->createRoom(1, 'Foreign Topic Test', [
+            'question_selection' => [
+                'topic_uuids' => [$foreignTopic['public_uuid']],
+            ],
+        ]);
     }
 
     public function testDifficultyZoneScalesWithNonStandardBoardSize(): void
@@ -833,9 +914,10 @@ final class GameEngineHardeningTest extends CIUnitTestCase
     public function testCreateRoomPlacesRequestedNumberOfMysteryTiles(): void
     {
         $engine = new GameEngine();
-        $room = $engine->createRoom(1, 'Mystery Count Test', [
+        $snapshot = $engine->createRoom(1, 'Mystery Count Test', [
             'mystery_tile_count' => 4,
-        ])['room'];
+        ]);
+        $room = $snapshot['room'];
 
         $usedBoardId = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'];
         $board = (new BoardTemplateModel())->find($usedBoardId);
@@ -843,6 +925,7 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $mysteryTiles = array_values(array_filter($tiles, static fn (array $tile): bool => $tile['type'] === 'MYSTERY'));
 
         $this->assertCount(4, $mysteryTiles);
+        $this->assertSame(4, $snapshot['board']['mystery_tile_count']);
         $this->assertSame('ROOM_INSTANCE', $board['status']);
 
         $positions = array_map(static fn (array $tile): int => (int) $tile['tile'], $tiles);
@@ -1060,6 +1143,50 @@ final class GameEngineHardeningTest extends CIUnitTestCase
                 'sort_order' => $sort++,
             ]);
         }
+    }
+
+    private function seedTopic(int $teacherId, string $name): array
+    {
+        $topicId = (new QuestionTopicModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'owner_teacher_id' => $teacherId,
+            'name' => $name,
+        ], true);
+
+        return (new QuestionTopicModel())->find($topicId);
+    }
+
+    private function seedTopicQuestion(int $teacherId, int $topicId, string $stem, string $difficulty): int
+    {
+        $now = date('Y-m-d H:i:s');
+        $questionId = (int) (new QuestionModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'owner_teacher_id' => $teacherId,
+            'topic_id' => $topicId,
+            'source_type' => 'MASTER',
+            'question_type' => 'MULTIPLE_CHOICE',
+            'stem' => $stem,
+            'difficulty' => $difficulty,
+            'status' => 'PUBLISHED',
+            'points' => 100,
+            'time_limit_seconds' => 30,
+            'explanation' => null,
+            'meta_json' => null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], true);
+
+        foreach (['A' => true, 'B' => false] as $label => $isCorrect) {
+            (new QuestionOptionModel())->insert([
+                'question_id' => $questionId,
+                'label' => $label,
+                'body' => $isCorrect ? 'Benar' : 'Salah',
+                'is_correct' => $isCorrect ? 1 : 0,
+                'sort_order' => $label === 'A' ? 1 : 2,
+            ]);
+        }
+
+        return $questionId;
     }
 
     private function noScoring(): array

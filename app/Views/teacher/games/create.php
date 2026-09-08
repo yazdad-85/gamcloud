@@ -3,17 +3,30 @@
 <?= $this->section('content') ?>
 <?php
     $selectedTeacherId = old('teacher_id');
-    $initialQuestionSummary = $questionBankSummary ?? null;
-    if (! empty($isSuperadmin) && $selectedTeacherId !== null && isset($questionBankSummaries[(int) $selectedTeacherId])) {
-        $initialQuestionSummary = $questionBankSummaries[(int) $selectedTeacherId];
-    }
     $emptyQuestionSummary = [
         'total' => 0,
         'difficulty' => ['EASY' => 0, 'MEDIUM' => 0, 'HARD' => 0],
         'type' => [],
         'zone_strategy_ready' => false,
     ];
-    $initialQuestionSummary ??= $emptyQuestionSummary;
+    $initialTopicCatalog = ! empty($isSuperadmin)
+        ? ($questionTopicCatalogs[(int) $selectedTeacherId] ?? [])
+        : ($questionTopicCatalog ?? []);
+    $selectedTopicUuids = old('question_topic_uuids', []);
+    $selectedTopicUuids = is_array($selectedTopicUuids) ? array_map('strval', $selectedTopicUuids) : [];
+    $initialQuestionSummary = $emptyQuestionSummary;
+    foreach ($initialTopicCatalog as $topic) {
+        if (! in_array((string) $topic['uuid'], $selectedTopicUuids, true)) {
+            continue;
+        }
+        $initialQuestionSummary['total'] += (int) $topic['summary']['total'];
+        foreach (['EASY', 'MEDIUM', 'HARD'] as $difficulty) {
+            $initialQuestionSummary['difficulty'][$difficulty] += (int) $topic['summary']['difficulty'][$difficulty];
+        }
+    }
+    $initialQuestionSummary['zone_strategy_ready'] = $initialQuestionSummary['difficulty']['EASY'] > 0
+        && $initialQuestionSummary['difficulty']['MEDIUM'] > 0
+        && $initialQuestionSummary['difficulty']['HARD'] > 0;
 ?>
 <div class="topbar">
     <div>
@@ -46,10 +59,36 @@
             <label for="title">Judul Game</label>
             <input id="title" name="title" placeholder="Contoh: Review IPA Kelas 6">
         </div>
+        <div class="field">
+            <label>Topik Soal</label>
+            <div class="topic-selection-grid" data-topic-options>
+                <?php foreach ($initialTopicCatalog as $topic): ?>
+                    <?php $topicTotal = (int) $topic['summary']['total']; ?>
+                    <label class="topic-selection-option <?= $topicTotal < 1 ? 'is-disabled' : '' ?>">
+                        <input
+                            type="checkbox"
+                            name="question_topic_uuids[]"
+                            value="<?= esc($topic['uuid']) ?>"
+                            data-summary="<?= esc(json_encode($topic['summary'], JSON_UNESCAPED_SLASHES)) ?>"
+                            <?= in_array((string) $topic['uuid'], $selectedTopicUuids, true) ? 'checked' : '' ?>
+                            <?= $topicTotal < 1 ? 'disabled' : '' ?>
+                        >
+                        <span>
+                            <strong><?= esc($topic['name']) ?></strong>
+                            <small><?= esc((string) $topicTotal) ?> soal published</small>
+                        </span>
+                    </label>
+                <?php endforeach ?>
+                <?php if ($initialTopicCatalog === []): ?>
+                    <p class="topic-selection-empty">Pilih guru untuk melihat topik, atau buat topik dan isi soal published terlebih dahulu.</p>
+                <?php endif ?>
+            </div>
+            <p class="field-help">Pilih satu atau beberapa topik. Hanya soal published dari topik tersebut yang masuk ke room.</p>
+        </div>
         <div class="question-bank-panel" data-question-bank>
             <div>
-                <h2>Bank Soal Yang Dipakai</h2>
-                <p class="muted">Semua soal published milik guru pemilik room akan dipakai dalam game ini.</p>
+                <h2>Soal Dalam Room</h2>
+                <p class="muted">Ringkasan otomatis mengikuti topik yang dipilih.</p>
             </div>
             <div class="question-bank-metrics">
                 <div>
@@ -70,9 +109,11 @@
                 </div>
             </div>
             <p class="field-help" data-bank-note>
-                <?= $initialQuestionSummary['zone_strategy_ready']
-                    ? 'Stok soal sudah siap untuk difficulty zone.'
-                    : 'Jika salah satu difficulty kosong, game otomatis mengambil soal published lain sebagai fallback.' ?>
+                <?= $initialQuestionSummary['total'] < 1
+                    ? 'Pilih topik yang memiliki soal published.'
+                    : ($initialQuestionSummary['zone_strategy_ready']
+                        ? 'Stok soal sudah siap untuk difficulty zone.'
+                        : 'Difficulty yang kosong akan mengambil soal lain, tetapi tetap dari topik terpilih.') ?>
             </p>
         </div>
         <div class="field">
@@ -87,7 +128,7 @@
                     <span>Acak semua soal</span>
                 </label>
             </div>
-            <p class="field-help">Zona difficulty: kotak 1-30 EASY, 31-70 MEDIUM, 71-100 HARD. Jika stok zona kosong, game fallback ke soal published lain.</p>
+            <p class="field-help">Zona difficulty: 30% awal EASY, 40% tengah MEDIUM, dan 30% akhir HARD. Jika stok zona kosong, game fallback ke soal published lain dalam topik terpilih.</p>
             <p class="field-help">Soal muncul di setiap giliran lempar dadu, disesuaikan dengan kotak yang dituju dadu. Kotak BONUS/TRAP/SAFE/MYSTERY adalah efek tambahan yang berlaku setelah jawaban benar, bukan syarat munculnya soal.</p>
         </div>
         <div class="field">
@@ -142,7 +183,7 @@
         </div>
         <div class="field">
             <label for="mystery_tile_count">Jumlah Kotak Mystery</label>
-            <input type="number" id="mystery_tile_count" name="mystery_tile_count" min="0" max="6" value="<?= esc((string) old('mystery_tile_count', 2)) ?>">
+            <input type="number" id="mystery_tile_count" name="mystery_tile_count" min="0" max="6" step="1" value="<?= esc((string) old('mystery_tile_count', 2)) ?>" required>
             <p class="field-help">Kotak Mystery ditempatkan acak di papan saat room dibuat, tidak menumpuk dengan kotak spesial lain.</p>
         </div>
         <div class="field">
@@ -211,38 +252,100 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>
-<?php if (! empty($isSuperadmin)): ?>
-<script type="application/json" id="question-bank-summaries"><?= json_encode($questionBankSummaries, JSON_UNESCAPED_SLASHES) ?></script>
+<script type="application/json" id="question-topic-catalogs"><?= json_encode($questionTopicCatalogs ?? [], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <script>
 (function () {
-    const select = document.querySelector('#teacher_id');
-    const source = document.querySelector('#question-bank-summaries');
-    if (!select || !source) {
+    const teacherSelect = document.querySelector('#teacher_id');
+    const optionsContainer = document.querySelector('[data-topic-options]');
+    const source = document.querySelector('#question-topic-catalogs');
+    if (!optionsContainer) {
         return;
     }
 
-    const summaries = JSON.parse(source.textContent || '{}');
     const emptySummary = <?= json_encode($emptyQuestionSummary, JSON_UNESCAPED_SLASHES) ?>;
+    const catalogs = source ? JSON.parse(source.textContent || '{}') : {};
     const total = document.querySelector('[data-bank-total]');
     const easy = document.querySelector('[data-bank-easy]');
     const medium = document.querySelector('[data-bank-medium]');
     const hard = document.querySelector('[data-bank-hard]');
     const note = document.querySelector('[data-bank-note]');
 
-    function draw() {
-        const summary = summaries[select.value] || emptySummary;
-        total.textContent = summary.total || 0;
-        easy.textContent = summary.difficulty && summary.difficulty.EASY || 0;
-        medium.textContent = summary.difficulty && summary.difficulty.MEDIUM || 0;
-        hard.textContent = summary.difficulty && summary.difficulty.HARD || 0;
-        note.textContent = summary.zone_strategy_ready
-            ? 'Stok soal sudah siap untuk difficulty zone.'
-            : 'Jika salah satu difficulty kosong, game otomatis mengambil soal published lain sebagai fallback.';
+    function selectedSummary() {
+        const summary = JSON.parse(JSON.stringify(emptySummary));
+        optionsContainer.querySelectorAll('input[name="question_topic_uuids[]"]:checked').forEach(function (input) {
+            const item = JSON.parse(input.dataset.summary || '{}');
+            summary.total += Number(item.total || 0);
+            ['EASY', 'MEDIUM', 'HARD'].forEach(function (difficulty) {
+                summary.difficulty[difficulty] += Number(item.difficulty && item.difficulty[difficulty] || 0);
+            });
+        });
+        summary.zone_strategy_ready = summary.difficulty.EASY > 0
+            && summary.difficulty.MEDIUM > 0
+            && summary.difficulty.HARD > 0;
+
+        return summary;
     }
 
-    select.addEventListener('change', draw);
-    draw();
+    function drawSummary() {
+        const summary = selectedSummary();
+        total.textContent = summary.total;
+        easy.textContent = summary.difficulty.EASY;
+        medium.textContent = summary.difficulty.MEDIUM;
+        hard.textContent = summary.difficulty.HARD;
+        note.textContent = summary.total < 1
+            ? 'Pilih topik yang memiliki soal published.'
+            : (summary.zone_strategy_ready
+            ? 'Stok soal sudah siap untuk difficulty zone.'
+            : 'Difficulty yang kosong akan mengambil soal lain, tetapi tetap dari topik terpilih.');
+    }
+
+    function topicOption(topic) {
+        const topicTotal = Number(topic.summary && topic.summary.total || 0);
+        const label = document.createElement('label');
+        label.className = 'topic-selection-option' + (topicTotal < 1 ? ' is-disabled' : '');
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.name = 'question_topic_uuids[]';
+        input.value = topic.uuid;
+        input.disabled = topicTotal < 1;
+        input.dataset.summary = JSON.stringify(topic.summary || emptySummary);
+
+        const text = document.createElement('span');
+        const name = document.createElement('strong');
+        const count = document.createElement('small');
+        name.textContent = topic.name;
+        count.textContent = topicTotal + ' soal published';
+        text.append(name, count);
+        label.append(input, text);
+
+        return label;
+    }
+
+    function drawTopics() {
+        if (!teacherSelect) {
+            return;
+        }
+
+        const topics = catalogs[teacherSelect.value] || [];
+        optionsContainer.replaceChildren();
+        topics.forEach(function (topic) {
+            optionsContainer.append(topicOption(topic));
+        });
+        if (topics.length < 1) {
+            const empty = document.createElement('p');
+            empty.className = 'topic-selection-empty';
+            empty.textContent = 'Pilih guru untuk melihat topik, atau buat topik dan isi soal published terlebih dahulu.';
+            optionsContainer.append(empty);
+        }
+        drawSummary();
+    }
+
+    optionsContainer.addEventListener('change', drawSummary);
+    if (teacherSelect) {
+        teacherSelect.addEventListener('change', drawTopics);
+    }
+    drawSummary();
 })();
 </script>
-<?php endif ?>
 <?= $this->endSection() ?>

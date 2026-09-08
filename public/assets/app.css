@@ -314,6 +314,75 @@ button.button {
     margin: 0 0 4px;
 }
 
+.topic-selection-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.topic-selection-option {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    gap: 10px;
+    min-height: 58px;
+    padding: 10px 12px;
+}
+
+.topic-selection-option:has(input:checked) {
+    background: #eff6ff;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .1);
+}
+
+.topic-selection-option.is-disabled {
+    background: #f8fafc;
+    cursor: not-allowed;
+    opacity: .62;
+}
+
+.topic-selection-option input {
+    accent-color: var(--primary);
+    min-height: auto;
+    padding: 0;
+    width: auto;
+}
+
+.topic-selection-option span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.topic-selection-option strong,
+.topic-selection-option small {
+    overflow-wrap: anywhere;
+}
+
+.topic-selection-option strong {
+    color: var(--text);
+    font-size: 14px;
+}
+
+.topic-selection-option small,
+.topic-selection-empty {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.topic-selection-empty {
+    background: #f8fafc;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 14px;
+}
+
 .question-bank-metrics {
     display: grid;
     gap: 8px;

@@ -11,6 +11,7 @@ use App\Models\GameTurnModel;
 use App\Models\IdempotencyKeyModel;
 use App\Models\QuestionModel;
 use App\Models\QuestionOptionModel;
+use App\Models\QuestionTopicModel;
 use App\Models\ScoreTransactionModel;
 use App\Services\Game\Modes\GameModeCatalog;
 use App\Services\Realtime\ChannelName;
@@ -57,7 +58,11 @@ class GameEngine
         }
 
         if (isset($options['mystery_tile_count'])) {
-            $board = $this->applyMysteryTileCount($board, (int) $options['mystery_tile_count']);
+            $requestedMysteryCount = max(0, min(6, (int) $options['mystery_tile_count']));
+            $board = $this->applyMysteryTileCount($board, $requestedMysteryCount);
+            if ($this->specialTileCount($board, 'MYSTERY') !== $requestedMysteryCount) {
+                throw new DomainException('Konfigurasi Kotak Mystery gagal diterapkan. Room tidak dibuat.');
+            }
         }
 
         $pin = $this->uniquePin();
@@ -65,7 +70,16 @@ class GameEngine
         $turnOrderMode = $this->validOption((string) ($options['turn_order_mode'] ?? 'random'), ['random', 'join_order'], 'random');
         $finishRule = $this->validOption((string) ($options['finish_rule'] ?? 'clamp_finish'), ['clamp_finish', 'exact_finish'], 'clamp_finish');
         $scoring = $this->scoringRules($options['scoring'] ?? []);
-        $questionSelection = $this->questionSelectionRules($options['question_selection'] ?? [], (int) $board['tile_count']);
+        $questionSelectionSource = is_array($options['question_selection'] ?? null)
+            ? $options['question_selection']
+            : [];
+        if (array_key_exists('topic_uuids', $questionSelectionSource)) {
+            $questionSelectionSource = array_merge(
+                $questionSelectionSource,
+                $this->resolveQuestionTopics($teacherId, $questionSelectionSource['topic_uuids'])
+            );
+        }
+        $questionSelection = $this->questionSelectionRules($questionSelectionSource, (int) $board['tile_count']);
         $gameModeKey = $this->validOption(strtoupper((string) ($options['game_mode'] ?? 'SNAKES_LADDERS')), $this->modes->playableKeys(), 'SNAKES_LADDERS');
         $gameMode = $this->modes->resolve($gameModeKey);
         $baseRoomState = [
@@ -99,6 +113,8 @@ class GameEngine
             'pin' => $pin,
             'title' => $title,
             'game_mode' => $gameMode->key(),
+            'question_topics' => $questionSelection['topics'],
+            'mystery_tile_count' => $this->specialTileCount($board, 'MYSTERY'),
         ]);
 
         return $this->snapshot($room['public_uuid']);
@@ -340,8 +356,9 @@ class GameEngine
 
         $dice = random_int(1, 6);
         $landedTile = $this->computeLandedTile((int) $team['position'], $dice, $room);
+        $selectionRules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
         $targetDifficulty = $this->targetDifficultyForTurn($room, $landedTile);
-        $question = $this->selectQuestion((int) $room['teacher_id'], $targetDifficulty);
+        $question = $this->selectQuestion((int) $room['teacher_id'], $targetDifficulty, $selectionRules['topic_ids']);
         $now = date('Y-m-d H:i:s');
         $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
 
@@ -583,7 +600,8 @@ class GameEngine
             $targetTeamId = (int) $targetTeam['id'];
         }
 
-        $question = $this->selectQuestion((int) $room['teacher_id'], 'HARD');
+        $selectionRules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
+        $question = $this->selectQuestion((int) $room['teacher_id'], 'HARD', $selectionRules['topic_ids']);
         $now = date('Y-m-d H:i:s');
         $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
 
@@ -762,12 +780,16 @@ class GameEngine
 
         return [
             'room' => $this->publicRoom($room),
-            'question_bank' => $this->questionBankSummary((int) $room['teacher_id']),
+            'question_bank' => $this->questionBankSummary(
+                (int) $room['teacher_id'],
+                $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position'])['topic_ids']
+            ),
             'board' => [
                 'tile_count' => (int) $board['tile_count'],
                 'ladders' => json_decode((string) $board['ladders_json'], true) ?: [],
                 'snakes' => json_decode((string) $board['snakes_json'], true) ?: [],
                 'special_tiles' => $this->boardSpecialTiles($board),
+                'mystery_tile_count' => $this->specialTileCount($board, 'MYSTERY'),
                 'theme' => $this->publicTheme($board),
             ],
             'teams' => $teams,
@@ -874,11 +896,15 @@ class GameEngine
         ]);
     }
 
-    private function selectQuestion(int $teacherId, ?string $difficulty = null): array
+    private function selectQuestion(int $teacherId, ?string $difficulty = null, array $topicIds = []): array
     {
         $query = (new QuestionModel())
             ->where('owner_teacher_id', $teacherId)
             ->where('status', 'PUBLISHED');
+
+        if ($topicIds !== []) {
+            $query->whereIn('topic_id', $topicIds);
+        }
 
         if ($difficulty !== null) {
             $query->where('difficulty', $difficulty);
@@ -886,10 +912,13 @@ class GameEngine
 
         $questions = $query->findAll();
         if ($questions === [] && $difficulty !== null) {
-            $questions = (new QuestionModel())
+            $fallbackQuery = (new QuestionModel())
                 ->where('owner_teacher_id', $teacherId)
-                ->where('status', 'PUBLISHED')
-                ->findAll();
+                ->where('status', 'PUBLISHED');
+            if ($topicIds !== []) {
+                $fallbackQuery->whereIn('topic_id', $topicIds);
+            }
+            $questions = $fallbackQuery->findAll();
         }
 
         if ($questions === []) {
@@ -1310,13 +1339,73 @@ class GameEngine
 
         return [
             'strategy' => $strategy,
+            'topic_ids' => array_values(array_unique(array_filter(
+                array_map('intval', is_array($source['topic_ids'] ?? null) ? $source['topic_ids'] : []),
+                static fn (int $topicId): bool => $topicId > 0
+            ))),
+            'topics' => array_values(array_filter(
+                is_array($source['topics'] ?? null) ? $source['topics'] : [],
+                static fn ($topic): bool => is_array($topic)
+                    && isset($topic['uuid'], $topic['name'])
+                    && is_string($topic['uuid'])
+                    && is_string($topic['name'])
+            )),
             'zones' => [
                 ['from' => 1, 'to' => $easyTo, 'difficulty' => 'EASY'],
                 ['from' => $easyTo + 1, 'to' => $mediumTo, 'difficulty' => 'MEDIUM'],
                 ['from' => $mediumTo + 1, 'to' => $maxPosition, 'difficulty' => 'HARD'],
             ],
-            'fallback' => 'any_published_question',
+            'fallback' => 'any_published_question_in_selected_topics',
         ];
+    }
+
+    private function resolveQuestionTopics(int $teacherId, $topicUuids): array
+    {
+        if (! is_array($topicUuids)) {
+            $topicUuids = [];
+        }
+
+        $topicUuids = array_values(array_unique(array_filter(
+            array_map(static fn ($uuid): string => trim((string) $uuid), $topicUuids),
+            static fn (string $uuid): bool => $uuid !== ''
+        )));
+        if ($topicUuids === []) {
+            throw new DomainException('Pilih minimal satu topik soal untuk game.');
+        }
+        if (count($topicUuids) > 20) {
+            throw new DomainException('Maksimal 20 topik dapat dipakai dalam satu game.');
+        }
+
+        $topics = (new QuestionTopicModel())
+            ->where('owner_teacher_id', $teacherId)
+            ->whereIn('public_uuid', $topicUuids)
+            ->findAll();
+        if (count($topics) !== count($topicUuids)) {
+            throw new DomainException('Pilihan topik tidak valid atau bukan milik guru pemilik room.');
+        }
+
+        $topicIds = array_map(static fn (array $topic): int => (int) $topic['id'], $topics);
+        if ($this->questionBankSummary($teacherId, $topicIds)['total'] < 1) {
+            throw new DomainException('Topik yang dipilih belum memiliki soal published.');
+        }
+
+        usort($topics, static fn (array $left, array $right): int => strcasecmp($left['name'], $right['name']));
+
+        return [
+            'topic_ids' => $topicIds,
+            'topics' => array_map(static fn (array $topic): array => [
+                'uuid' => $topic['public_uuid'],
+                'name' => $topic['name'],
+            ], $topics),
+        ];
+    }
+
+    private function publicQuestionSelectionRules(array $room): array
+    {
+        $rules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
+        unset($rules['topic_ids']);
+
+        return $rules;
     }
 
     private function targetDifficultyForTurn(array $room, int $position): ?string
@@ -1437,6 +1526,16 @@ class GameEngine
         }
 
         return null;
+    }
+
+    private function specialTileCount(array $board, string $type): int
+    {
+        $type = strtoupper($type);
+
+        return count(array_filter(
+            $this->boardSpecialTiles($board),
+            static fn (array $tile): bool => $tile['type'] === $type
+        ));
     }
 
     private const BOARD_SIZE_LAYOUTS = [
@@ -1631,7 +1730,7 @@ class GameEngine
             'turn_order_mode' => $room['turn_order_mode'] ?? 'random',
             'finish_rule' => $room['finish_rule'] ?? 'clamp_finish',
             'scoring' => $this->scoringRules($room['scoring_json'] ?? []),
-            'question_selection' => $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']),
+            'question_selection' => $this->publicQuestionSelectionRules($room),
             'started_at' => $room['started_at'],
             'finished_at' => $room['finished_at'],
         ];
@@ -1732,15 +1831,53 @@ class GameEngine
         ];
     }
 
-    public function questionBankSummary(int $teacherId): array
+    public function questionBankSummary(int $teacherId, array $topicIds = []): array
     {
-        $rows = (new QuestionModel())
+        $query = (new QuestionModel())
             ->select('difficulty, question_type, COUNT(*) AS total')
             ->where('owner_teacher_id', $teacherId)
             ->where('status', 'PUBLISHED')
-            ->groupBy('difficulty, question_type')
+            ->groupBy('difficulty, question_type');
+
+        if ($topicIds !== []) {
+            $query->whereIn('topic_id', $topicIds);
+        }
+
+        $rows = $query->findAll();
+
+        return $this->summarizeQuestionRows($rows);
+    }
+
+    public function questionTopicCatalog(int $teacherId): array
+    {
+        $topics = (new QuestionTopicModel())
+            ->where('owner_teacher_id', $teacherId)
+            ->orderBy('name', 'ASC')
             ->findAll();
 
+        $rows = (new QuestionModel())
+            ->select('topic_id, difficulty, question_type, COUNT(*) AS total')
+            ->where('owner_teacher_id', $teacherId)
+            ->where('status', 'PUBLISHED')
+            ->where('topic_id IS NOT NULL', null, false)
+            ->groupBy('topic_id, difficulty, question_type')
+            ->findAll();
+        $rowsByTopic = [];
+        foreach ($rows as $row) {
+            $rowsByTopic[(int) $row['topic_id']][] = $row;
+        }
+
+        return array_map(function (array $topic) use ($rowsByTopic): array {
+            return [
+                'uuid' => $topic['public_uuid'],
+                'name' => $topic['name'],
+                'summary' => $this->summarizeQuestionRows($rowsByTopic[(int) $topic['id']] ?? []),
+            ];
+        }, $topics);
+    }
+
+    private function summarizeQuestionRows(array $rows): array
+    {
         $summary = [
             'total' => 0,
             'difficulty' => [
