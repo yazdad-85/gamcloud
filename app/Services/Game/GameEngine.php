@@ -683,10 +683,15 @@ class GameEngine
             }
         } elseif ($isCorrect && $targetTeamId !== null) {
             $opponent = (new GameTeamModel())->find($targetTeamId);
+            if ($opponent === null) {
+                throw new DomainException('Tim target Kotak Misteri sudah tidak ada.');
+            }
             $this->applyMysteryDeltaToTeam($room, $opponent, -60, -4, $maxPosition);
             $outcome = 'PUNISH_OPPONENT';
             $affectedTeamUuid = $opponent['public_uuid'];
         } else {
+            // Wrong answer or timeout always punishes the answering team,
+            // regardless of whether they had chosen SELF or an opponent.
             $this->applyMysteryDeltaToTeam($room, $team, -60, -4, $maxPosition);
             $outcome = 'BOOMERANG_SELF';
             $affectedTeamUuid = $team['public_uuid'];
