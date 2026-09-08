@@ -1143,7 +1143,7 @@ textarea {
 .pawn {
     border: 2px solid #ffffff;
     border-radius: 50%;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .3), 0 0 0 3px color-mix(in srgb, var(--board-accent, #f97316) 45%, transparent);
     height: 18px;
     width: 18px;
 }
@@ -1263,7 +1263,7 @@ textarea {
     align-items: center;
     border: 3px solid #ffffff;
     border-radius: 999px;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, .34), 0 0 0 7px rgba(255, 255, 255, .18);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, .34), 0 0 0 7px rgba(255, 255, 255, .18), 0 0 0 10px color-mix(in srgb, var(--board-accent, #f97316) 55%, transparent);
     color: #ffffff;
     display: inline-flex;
     font-size: 15px;

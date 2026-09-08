@@ -746,6 +746,7 @@
         mover.className = 'board-mover';
         mover.classList.add('avatar-' + avatarClass(team.avatar));
         mover.style.setProperty('--team-color', team.color);
+        mover.style.setProperty('--board-accent', (snapshot.board && snapshot.board.theme && snapshot.board.theme.palette && snapshot.board.theme.palette.accent) || '#f97316');
         mover.style.background = team.color;
         mover.innerHTML = '<span>' + escapeHtml(teamInitials(team.name)) + '</span>';
         document.body.appendChild(mover);
