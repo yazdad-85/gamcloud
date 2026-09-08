@@ -110,17 +110,34 @@
             <p class="field-help">Mode lain disiapkan sebagai fondasi platform, tetapi room aktif saat ini tetap memakai ular tangga kuis.</p>
         </div>
         <div class="field">
-            <label for="board_template_id">Tema Papan</label>
-            <select id="board_template_id" name="board_template_id">
-                <option value="">Pilih otomatis</option>
+            <label>Tema Papan</label>
+            <div class="theme-grid">
+                <label class="theme-option">
+                    <input type="radio" name="board_template_id" value="" <?= (string) old('board_template_id', '') === '' ? 'checked' : '' ?>>
+                    <span class="theme-preview theme-preview-auto">Otomatis</span>
+                    <strong>Pilih Otomatis</strong>
+                    <span class="muted">Sistem pilih tema aktif pertama</span>
+                </label>
                 <?php foreach ($boards as $board): ?>
-                    <?php $theme = json_decode((string) ($board['theme_json'] ?? ''), true) ?: []; ?>
-                    <option value="<?= esc((string) $board['id']) ?>" <?= old('board_template_id') == $board['id'] ? 'selected' : '' ?>>
-                        <?= esc($theme['name'] ?? $board['name']) ?>
-                    </option>
+                    <?php
+                        $theme = json_decode((string) ($board['theme_json'] ?? ''), true) ?: [];
+                        $palette = $theme['palette'] ?? [];
+                    ?>
+                    <label class="theme-option">
+                        <input type="radio" name="board_template_id" value="<?= esc((string) $board['id']) ?>" <?= (string) old('board_template_id') === (string) $board['id'] ? 'checked' : '' ?>>
+                        <span class="theme-preview" style="background:<?= esc($palette['board'] ?? '#111827') ?>">
+                            <?php for ($i = 0; $i < 16; $i++): ?>
+                                <span class="theme-preview-tile" style="background:<?= esc($i % 2 === 0 ? ($palette['tileA'] ?? '#f8fafc') : ($palette['tileB'] ?? '#e0f2fe')) ?>"></span>
+                            <?php endfor ?>
+                            <span class="theme-preview-ladder" style="background:<?= esc($palette['ladder'] ?? '#facc15') ?>"></span>
+                            <span class="theme-preview-snake" style="background:<?= esc($palette['snake'] ?? '#22c55e') ?>"></span>
+                        </span>
+                        <strong><?= esc($theme['name'] ?? $board['name']) ?></strong>
+                        <span class="muted"><?= esc((string) $board['tile_count']) ?> kotak</span>
+                    </label>
                 <?php endforeach ?>
-            </select>
-            <p class="field-help">Tema memengaruhi suasana papan, bukan mengganti soal satu per satu.</p>
+            </div>
+            <p class="field-help">Tema memengaruhi suasana papan (warna, ular, tangga), bukan mengganti soal satu per satu.</p>
         </div>
         <div class="field">
             <label for="turn_order_mode">Giliran Pertama</label>
