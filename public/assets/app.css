@@ -2654,6 +2654,14 @@ textarea {
     opacity: .55;
 }
 
+.projector .board-grid {
+    z-index: 2;
+}
+
+.projector .board-path-layer {
+    z-index: 4;
+}
+
 .projector .tile-theme-icon::after {
     height: 72%;
     opacity: .3;
