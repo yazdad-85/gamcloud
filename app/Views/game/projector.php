@@ -6,6 +6,7 @@
     <p>Ketuk untuk mengaktifkan suara efek permainan</p>
     <button type="button" data-fx-sound-unlock-button>🔊 Aktifkan Suara</button>
 </div>
+<button type="button" class="fx-sound-mute" data-fx-sound-mute aria-pressed="false" title="Mute suara proyektor">🔊 Suara</button>
 <div class="projector-grid">
     <section>
         <div class="board" data-board></div>
@@ -57,5 +58,28 @@ document.querySelectorAll('[data-fx-sound-unlock-button]').forEach(function (but
         button.closest('[data-fx-sound-unlock]').classList.add('hidden');
     });
 });
+
+(function () {
+    var muteButton = document.querySelector('[data-fx-sound-mute]');
+    if (!muteButton || !window.GameFx || !GameFx.sound) {
+        return;
+    }
+
+    function syncMuteUi() {
+        var muted = !!GameFx.sound.isMuted();
+        muteButton.setAttribute('aria-pressed', muted ? 'true' : 'false');
+        muteButton.textContent = muted ? '🔇 Senyap' : '🔊 Suara';
+        muteButton.classList.toggle('is-muted', muted);
+    }
+
+    syncMuteUi();
+    muteButton.addEventListener('click', function () {
+        GameFx.sound.setMuted(!GameFx.sound.isMuted());
+        if (!GameFx.sound.isMuted() && GameFx.sound.unlock) {
+            GameFx.sound.unlock();
+        }
+        syncMuteUi();
+    });
+})();
 </script>
 <?= $this->endSection() ?>

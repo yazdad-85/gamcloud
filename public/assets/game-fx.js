@@ -14,6 +14,34 @@
         return audioCtx;
     }
 
+    var MUTE_STORAGE_KEY = 'edugame.projector.muted';
+    var muted = false;
+    var tensionTimer = null;
+    var tensionPulseMs = 900;
+
+    try {
+        muted = window.localStorage.getItem(MUTE_STORAGE_KEY) === '1';
+    } catch (err) {
+        muted = false;
+    }
+
+    function setMuted(value) {
+        muted = !!value;
+        try {
+            window.localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0');
+        } catch (err) {
+            // ignore quota / private mode
+        }
+        if (muted) {
+            stopTension();
+        }
+        return muted;
+    }
+
+    function isMuted() {
+        return muted;
+    }
+
     function unlockSound() {
         var ctx = ensureAudioCtx();
         if (ctx && ctx.state === 'suspended') {
@@ -22,6 +50,9 @@
     }
 
     function tone(freq, startOffset, duration, waveType, gainPeak) {
+        if (muted) {
+            return;
+        }
         var ctx = ensureAudioCtx();
         if (!ctx || ctx.state !== 'running') {
             return;
@@ -41,6 +72,9 @@
     }
 
     function mysterySweep() {
+        if (muted) {
+            return;
+        }
         var ctx = ensureAudioCtx();
         if (!ctx || ctx.state !== 'running') {
             return;
@@ -58,6 +92,55 @@
         gain.connect(ctx.destination);
         osc.start(startAt);
         osc.stop(startAt + 0.6);
+    }
+
+    function ladderClimb() {
+        [392, 493.88, 587.33, 784].forEach(function (freq, i) {
+            tone(freq, i * 0.09, 0.2, 'triangle', 0.18);
+        });
+    }
+
+    function snakeDrop() {
+        [440, 330, 220, 140].forEach(function (freq, i) {
+            tone(freq, i * 0.1, 0.24, 'sawtooth', 0.15);
+        });
+    }
+
+    function tensionPulse() {
+        if (muted) {
+            return;
+        }
+        tone(180, 0, 0.12, 'square', 0.07);
+        tone(240, 0.08, 0.1, 'square', 0.05);
+    }
+
+    function startTension(options) {
+        if (muted) {
+            return;
+        }
+        unlockSound();
+        var remaining = options && typeof options.remaining === 'number' ? options.remaining : null;
+        var nextMs = remaining !== null && remaining <= 4 ? 420 : remaining !== null && remaining <= 7 ? 620 : 900;
+        if (tensionTimer && tensionPulseMs === nextMs) {
+            return;
+        }
+        stopTension();
+        tensionPulseMs = nextMs;
+        tensionPulse();
+        tensionTimer = window.setInterval(function () {
+            if (muted) {
+                stopTension();
+                return;
+            }
+            tensionPulse();
+        }, tensionPulseMs);
+    }
+
+    function stopTension() {
+        if (tensionTimer) {
+            window.clearInterval(tensionTimer);
+            tensionTimer = null;
+        }
     }
 
     var SOUND_LIBRARY = {
@@ -79,16 +162,29 @@
                 tone(freq, i * 0.09, 0.16, 'square', 0.16);
             });
         },
+        points: function () {
+            SOUND_LIBRARY.bonus();
+        },
         trap: function () {
             [400, 260].forEach(function (freq, i) {
                 tone(freq, i * 0.1, 0.22, 'sawtooth', 0.16);
             });
+        },
+        snake: function () {
+            snakeDrop();
+        },
+        ladder: function () {
+            ladderClimb();
         },
         mystery: function () {
             mysterySweep();
         },
         safe: function () {
             tone(880, 0, 0.3, 'sine', 0.14);
+        },
+        shield: function () {
+            tone(740, 0, 0.12, 'triangle', 0.16);
+            tone(980, 0.1, 0.22, 'sine', 0.14);
         },
         winner: function () {
             [523.25, 659.25, 783.99, 1046.5].forEach(function (freq, i) {
@@ -97,9 +193,21 @@
         },
     };
 
+    var SOUND_ALIASES = {
+        points: 'points',
+        shield: 'shield',
+        ladder: 'ladder',
+        snake: 'snake',
+    };
+
     function playSoundSafe(name) {
-        var fn = SOUND_LIBRARY[name];
+        if (muted) {
+            return;
+        }
+        var key = SOUND_ALIASES[name] || name;
+        var fn = SOUND_LIBRARY[key];
         if (fn) {
+            unlockSound();
             fn();
         }
     }
@@ -341,11 +449,11 @@
     }
 
     var TILE_EFFECT_STYLE = {
-        BONUS: {icon: ICONS.bonus, tone: 'bonus', sound: 'bonus'},
+        BONUS: {icon: ICONS.bonus, tone: 'bonus', sound: 'points'},
         TRAP: {icon: ICONS.trap, tone: 'trap', sound: 'trap'},
         MYSTERY: {icon: ICONS.mystery, tone: 'mystery', sound: 'mystery'},
-        SAFE: {icon: ICONS.shield, tone: 'safe', sound: 'safe'},
-        SAFE_BLOCK: {icon: ICONS.shield, tone: 'safe', sound: 'safe'},
+        SAFE: {icon: ICONS.shield, tone: 'safe', sound: 'shield'},
+        SAFE_BLOCK: {icon: ICONS.shield, tone: 'safe', sound: 'shield'},
     };
 
     function tileEffect(x, y, type, label) {
@@ -410,6 +518,11 @@
     window.GameFx = {
         sound: {
             unlock: unlockSound,
+            play: playSoundSafe,
+            startTension: startTension,
+            stopTension: stopTension,
+            setMuted: setMuted,
+            isMuted: isMuted,
         },
         mountDie: mountDie,
         setDieResting: setDieResting,

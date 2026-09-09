@@ -475,6 +475,30 @@
             el.style.width = countdown.percent + '%';
             el.classList.toggle('countdown-danger', countdown.remaining !== null && countdown.remaining <= 10);
         });
+        syncProjectorTension(countdown, snapshot);
+    }
+
+    function syncProjectorTension(countdown, snapshot) {
+        if (!document.body.classList.contains('projector') || !window.GameFx || !GameFx.sound) {
+            return;
+        }
+        const roomPlaying = snapshot && snapshot.room && snapshot.room.status === 'PLAYING';
+        const active = roomPlaying
+            && countdown.remaining !== null
+            && countdown.remaining > 0
+            && countdown.remaining <= 10;
+        if (active) {
+            GameFx.sound.startTension({remaining: countdown.remaining});
+        } else {
+            GameFx.sound.stopTension();
+        }
+    }
+
+    function playProjectorCue(name) {
+        if (!document.body.classList.contains('projector') || !window.GameFx || !GameFx.sound || !GameFx.sound.play) {
+            return;
+        }
+        GameFx.sound.play(name);
     }
 
     function countdownState(snapshot) {
@@ -676,6 +700,7 @@
             case 'mystery.resolved':
                 return runMovementSequence(event, snapshot, event.payload.affected_team_uuid, null);
             case 'snake.redemption_started':
+                playProjectorCue('snake');
                 return GameFx.banner({
                     tone: 'trap',
                     icon: '🐍',
@@ -684,6 +709,7 @@
                     durationMs: 1800,
                 });
             case 'ladder.challenge_started':
+                playProjectorCue('ladder');
                 return GameFx.banner({
                     tone: 'bonus',
                     icon: '🪜',
@@ -693,6 +719,9 @@
                 });
             case 'snake.redemption_resolved':
             case 'ladder.challenge_resolved':
+                playProjectorCue(event.event.indexOf('snake') === 0
+                    ? (event.payload.is_correct ? 'correct' : 'snake')
+                    : (event.payload.is_correct ? 'ladder' : 'wrong'));
                 return runMovementSequence(event, snapshot, event.payload.team_uuid, event.payload.is_correct);
             case 'game.finished':
                 return runWinnerSequence(event, snapshot);
@@ -1011,6 +1040,15 @@
         setBusy(true);
         overlay.className = 'projector-event-overlay overlay-' + item.tone;
         overlay.innerHTML = '<span>' + escapeHtml(item.title) + '</span><strong>' + escapeHtml(item.body) + '</strong>';
+        if (item.tone === 'winner') {
+            playProjectorCue('winner');
+        } else if (item.tone === 'success') {
+            playProjectorCue('correct');
+        } else if (item.tone === 'danger') {
+            playProjectorCue('wrong');
+        } else if (item.tone === 'dice') {
+            playProjectorCue('mystery');
+        }
 
         window.setTimeout(() => {
             overlay.classList.add('hidden');

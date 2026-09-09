@@ -32,6 +32,26 @@
     opacity: .85;
 }
 
+.fx-sound-mute {
+    background: rgba(15, 23, 42, .82);
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 999px;
+    color: #f8fafc;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 12px;
+    position: fixed;
+    right: 16px;
+    top: 16px;
+    z-index: 55;
+}
+
+.fx-sound-mute.is-muted {
+    background: rgba(127, 29, 29, .88);
+    border-color: rgba(254, 202, 202, .45);
+}
+
 .fx-dice-panel {
     align-items: center;
     display: grid;
