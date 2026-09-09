@@ -99,7 +99,65 @@ a {
 }
 
 .main {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
     padding: 28px;
+    padding-bottom: 16px;
+}
+
+.site-footer {
+    align-items: center;
+    color: var(--muted, #64748b);
+    display: flex;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    font-size: 12px;
+    gap: 8px 16px;
+    justify-content: space-between;
+    line-height: 1.4;
+}
+
+.site-footer-copy {
+    margin: 0;
+}
+
+.site-footer-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.site-footer-nav a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.site-footer-nav a:hover {
+    color: var(--text, #0f172a);
+}
+
+.site-footer-public {
+    background: transparent;
+    margin: 0;
+    padding: 8px 4px 0;
+    width: 100%;
+}
+
+.public-page:has(.login-landing) .site-footer-public {
+    color: rgba(255, 255, 255, .78);
+    padding: 6px 8px 0;
+}
+
+.public-page:has(.login-landing) .site-footer-nav a:hover {
+    color: #ffffff;
+}
+
+.site-footer-app {
+    border-top: 1px solid var(--line, #e2e8f0);
+    margin-top: auto;
+    padding-top: 14px;
 }
 
 .topbar {
@@ -496,20 +554,33 @@ textarea {
 }
 
 .public-page {
-    align-items: center;
-    display: grid;
+    display: flex;
+    flex-direction: column;
     height: 100svh;
     min-height: 100vh;
     overflow: hidden;
     padding: 16px;
 }
 
+.public-page-body {
+    align-items: center;
+    display: flex;
+    flex: 1;
+    justify-content: center;
+    min-height: 0;
+    width: 100%;
+}
+
 .public-page.public-page-scroll {
-    align-content: start;
-    align-items: start;
     height: auto;
     min-height: 100vh;
     overflow: auto;
+}
+
+.public-page.public-page-scroll .public-page-body {
+    align-items: stretch;
+    display: block;
+    flex: none;
 }
 
 .join-panel {
@@ -536,9 +607,9 @@ textarea {
     display: grid;
     gap: clamp(18px, 2vw, 26px);
     grid-template-columns: minmax(0, 1fr) minmax(330px, 400px);
-    height: calc(100svh - 32px);
+    height: 100%;
     isolation: isolate;
-    max-height: calc(100svh - 32px);
+    max-height: 100%;
     min-height: 0;
     overflow: hidden;
     padding: clamp(22px, 3vw, 44px);

@@ -80,6 +80,19 @@ class PlatformSettingsService
         return 'image/png';
     }
 
+    public function copyrightYears(?int $currentYear = null): string
+    {
+        $start = (int) (config('App')->appStartYear ?? 2026);
+        $current = $currentYear ?? (int) date('Y');
+        if ($current < $start) {
+            $current = $start;
+        }
+
+        return $current === $start
+            ? (string) $start
+            : $start . '–' . $current;
+    }
+
     public function set(string $key, ?string $value): void
     {
         $model = new PlatformSettingModel();

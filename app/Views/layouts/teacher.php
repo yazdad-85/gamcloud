@@ -45,6 +45,7 @@ $currentPath = trim(service('uri')->getPath(), '/');
     </aside>
     <main class="main">
         <?= $this->renderSection('content') ?>
+        <?= $this->include('partials/site_footer', ['footerVariant' => 'app', 'branding' => $branding]) ?>
     </main>
 </div>
 <script src="/assets/app.js"></script>

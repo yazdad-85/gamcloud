@@ -66,8 +66,6 @@
             <span></span>
             <p>Sudah punya akun? Masuk lewat Login Guru. Tim siswa memakai PIN room di Join Tim.</p>
         </div>
-
-        <p class="auth-switch">© <?= esc(date('Y')) ?> <?= esc($branding['site_name']) ?></p>
     </aside>
 </section>
 <?= $this->endSection() ?>

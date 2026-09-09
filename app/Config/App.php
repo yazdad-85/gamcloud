@@ -208,4 +208,9 @@ class App extends BaseConfig
      * @see http://www.w3.org/TR/CSP/
      */
     public bool $CSPEnabled = false;
+
+    /**
+     * First public year of this product (used for footer © ranges).
+     */
+    public int $appStartYear = 2026;
 }

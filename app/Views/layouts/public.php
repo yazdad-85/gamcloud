@@ -11,7 +11,10 @@
 </head>
 <body class="<?= esc($bodyClass ?? '') ?>">
 <main class="public-page <?= esc($publicPageClass ?? '') ?>">
-    <?= $this->renderSection('content') ?>
+    <div class="public-page-body">
+        <?= $this->renderSection('content') ?>
+    </div>
+    <?= $this->include('partials/site_footer', ['footerVariant' => 'public']) ?>
 </main>
 </body>
 </html>

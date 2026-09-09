@@ -80,4 +80,13 @@ final class PlatformSettingsServiceTest extends CIUnitTestCase
             }
         }
     }
+
+    public function testCopyrightYearsRange(): void
+    {
+        $service = new PlatformSettingsService();
+        $start = (int) config('App')->appStartYear;
+        $this->assertSame((string) $start, $service->copyrightYears($start));
+        $this->assertSame($start . '–' . ($start + 1), $service->copyrightYears($start + 1));
+        $this->assertSame($start . '–' . ($start + 4), $service->copyrightYears($start + 4));
+    }
 }
