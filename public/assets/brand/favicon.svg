@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ular Tangga Edukatif">
+  <rect width="64" height="64" rx="14" fill="#0E3A2E"/>
+  <path d="M18 46V22c0-2 1.5-3.5 3.5-3.5h6c2 0 3.5 1.5 3.5 3.5v8.5c0 2 1.5 3.5 3.5 3.5h6c2 0 3.5 1.5 3.5 3.5V46" fill="none" stroke="#22C59A" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="44" cy="18" r="5" fill="#F4F7F4"/>
+  <path d="M20 48h24" stroke="#A7C9BB" stroke-width="3" stroke-linecap="round"/>
+</svg>

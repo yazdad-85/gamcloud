@@ -4,6 +4,7 @@ use CodeIgniter\Router\RouteCollection;
 
 /** @var RouteCollection $routes */
 $routes->get('/', 'Home::index');
+$routes->get('sitemap.xml', 'SeoController::sitemap');
 
 $routes->get('join', 'Public\JoinController::index', ['filter' => 'rateLimit:40,60,join-page']);
 $routes->get('join/(:segment)', 'Public\JoinController::index/$1', ['filter' => 'rateLimit:40,60,join-page']);

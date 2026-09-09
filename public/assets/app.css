@@ -3057,3 +3057,208 @@ textarea {
 }
 #analisis-soal .pagination a.active,
 #jawaban-tim .pagination a.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+/* —— Landing / SEO public surface —— */
+.landing-body {
+    background:
+        radial-gradient(ellipse 80% 60% at 10% 0%, rgba(34, 197, 154, 0.18), transparent 55%),
+        radial-gradient(ellipse 70% 50% at 100% 20%, rgba(14, 58, 46, 0.12), transparent 50%),
+        linear-gradient(165deg, #f4f7f4 0%, #e7efe9 45%, #dce8e1 100%);
+    font-family: "Source Sans 3", "Segoe UI", sans-serif;
+}
+
+.landing {
+    --landing-ink: #0e3a2e;
+    --landing-accent: #14967a;
+    --landing-muted: #4d6b5f;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 20px 20px 48px;
+}
+
+.landing-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.landing-brand img {
+    display: block;
+    height: 44px;
+    width: auto;
+}
+
+.landing-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    font-weight: 600;
+    color: var(--landing-ink);
+}
+
+.landing-nav-cta {
+    padding: 8px 14px !important;
+}
+
+.landing-hero {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 36px;
+    align-items: center;
+    min-height: min(72vh, 640px);
+}
+
+.landing-eyebrow {
+    margin: 0 0 10px;
+    font-family: Fraunces, Georgia, serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--landing-accent);
+}
+
+.landing-hero h1 {
+    margin: 0 0 14px;
+    font-family: Fraunces, Georgia, serif;
+    font-size: clamp(2rem, 4.5vw, 3.25rem);
+    font-weight: 700;
+    line-height: 1.12;
+    color: var(--landing-ink);
+}
+
+.landing-lead {
+    margin: 0 0 22px;
+    max-width: 34rem;
+    font-size: 1.125rem;
+    line-height: 1.55;
+    color: var(--landing-muted);
+}
+
+.landing-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.landing-cta .button {
+    background: var(--landing-ink);
+    border-color: var(--landing-ink);
+}
+
+.landing-cta .button.secondary {
+    background: transparent;
+    color: var(--landing-ink);
+    border: 1px solid rgba(14, 58, 46, 0.35);
+}
+
+.landing-hero-visual {
+    position: relative;
+}
+
+.landing-board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 18px;
+    border-radius: 20px;
+    background: linear-gradient(145deg, #0e3a2e, #165a45);
+    box-shadow: 0 24px 48px rgba(14, 58, 46, 0.28);
+    transform: rotate(-2deg);
+}
+
+.landing-tile {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: rgba(244, 247, 244, 0.92);
+    color: #0e3a2e;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.landing-tile.is-ladder { background: #bbf7d0; }
+.landing-tile.is-snake { background: #fecaca; }
+.landing-tile.is-finish { background: #22c59a; color: #053328; }
+.landing-tile.is-active {
+    background: #fef3c7;
+    outline: 2px solid #f59e0b;
+}
+
+.landing-benefits {
+    margin-top: 64px;
+    padding-top: 8px;
+}
+
+.landing-benefits h2 {
+    margin: 0 0 8px;
+    font-family: Fraunces, Georgia, serif;
+    font-size: 1.75rem;
+    color: var(--landing-ink);
+}
+
+.landing-benefits-lead {
+    margin: 0 0 24px;
+    color: var(--landing-muted);
+}
+
+.landing-benefits ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+
+.landing-benefits li {
+    display: grid;
+    gap: 6px;
+}
+
+.landing-benefits strong {
+    font-family: Fraunces, Georgia, serif;
+    font-size: 1.15rem;
+    color: var(--landing-ink);
+}
+
+.landing-benefits span {
+    color: var(--landing-muted);
+    line-height: 1.45;
+}
+
+.landing-foot {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(14, 58, 46, 0.15);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--landing-muted);
+    font-size: 0.95rem;
+}
+
+@media (max-width: 860px) {
+    .landing-hero {
+        grid-template-columns: 1fr;
+        min-height: 0;
+    }
+
+    .landing-hero-visual {
+        order: -1;
+        max-width: 360px;
+    }
+
+    .landing-benefits ul {
+        grid-template-columns: 1fr;
+    }
+
+    .landing-top {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

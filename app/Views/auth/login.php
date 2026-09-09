@@ -1,4 +1,8 @@
-<?php $this->setData(['title' => 'Ruang Main Guru']); ?>
+<?php $this->setData([
+    'title' => 'Login Guru — Ular Tangga Edukatif',
+    'seoTitle' => 'Login Guru — Ular Tangga Edukatif',
+    'seoDescription' => 'Masuk ke ruang guru untuk mengelola bank soal, membuat room ular tangga, dan memandu kelas bermain.',
+]); ?>
 <?= $this->extend('layouts/public') ?>
 
 <?= $this->section('content') ?>

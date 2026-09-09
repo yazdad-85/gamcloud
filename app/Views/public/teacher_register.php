@@ -1,4 +1,9 @@
-<?php $this->setData(['title' => 'Daftar Akun Guru', 'publicPageClass' => 'public-page-scroll']); ?>
+<?php $this->setData([
+    'title' => 'Daftar Akun Guru — Ular Tangga Edukatif',
+    'seoTitle' => 'Daftar Akun Guru — Ular Tangga Edukatif',
+    'seoDescription' => 'Buat akun guru gratis untuk menyiapkan bank soal dan menjalankan kuis ular tangga di kelas.',
+    'publicPageClass' => 'public-page-scroll',
+]); ?>
 <?= $this->extend('layouts/public') ?>
 
 <?= $this->section('content') ?>
