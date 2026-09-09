@@ -160,7 +160,87 @@ class PlatformSettingsService
         $this->set($settingKey, $publicPath);
         $this->deleteManagedUpload($previous);
 
+        if ($settingKey === self::KEY_FAVICON_PATH) {
+            $this->syncRootFavicon($publicPath);
+        }
+
         return $publicPath;
+    }
+
+    /**
+     * WhatsApp/crawlers still request /favicon.ico by convention (CI4 ships a flame icon there).
+     * Keep root favicon.ico aligned with platform branding.
+     */
+    public function syncRootFavicon(?string $publicPath = null): void
+    {
+        $publicPath ??= $this->get(self::KEY_FAVICON_PATH);
+        $absolute = FCPATH . ltrim((string) $publicPath, '/');
+        if (! is_file($absolute)) {
+            return;
+        }
+
+        $this->writeRootFavicon($absolute);
+    }
+
+    private function writeRootFavicon(string $sourceAbsolute): void
+    {
+        $target = FCPATH . 'favicon.ico';
+        $ext = strtolower((string) pathinfo($sourceAbsolute, PATHINFO_EXTENSION));
+
+        if (extension_loaded('imagick')) {
+            try {
+                $image = new \Imagick();
+                $image->setBackgroundColor(new \ImagickPixel('transparent'));
+                $image->readImage($sourceAbsolute);
+                $image->setImageFormat('png');
+                $image->resizeImage(32, 32, \Imagick::FILTER_LANCZOS, 1, true);
+                $image->setImageFormat('ico');
+                $image->writeImage($target);
+                $image->clear();
+                $image->destroy();
+
+                return;
+            } catch (\Throwable) {
+                // Fall through to GD/copy.
+            }
+        }
+
+        if (in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true) && function_exists('imagecreatetruecolor')) {
+            $source = match ($ext) {
+                'png' => @imagecreatefrompng($sourceAbsolute),
+                'webp' => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($sourceAbsolute) : false,
+                default => @imagecreatefromjpeg($sourceAbsolute),
+            };
+            if ($source !== false) {
+                $canvas = imagecreatetruecolor(32, 32);
+                imagealphablending($canvas, false);
+                imagesavealpha($canvas, true);
+                $transparent = imagecolorallocatealpha($canvas, 0, 0, 0, 127);
+                imagefilledrectangle($canvas, 0, 0, 32, 32, $transparent);
+                imagealphablending($canvas, true);
+                imagecopyresampled(
+                    $canvas,
+                    $source,
+                    0,
+                    0,
+                    0,
+                    0,
+                    32,
+                    32,
+                    imagesx($source),
+                    imagesy($source)
+                );
+                imagepng($canvas, $target);
+                imagedestroy($source);
+                imagedestroy($canvas);
+
+                return;
+            }
+        }
+
+        if ($ext !== 'svg') {
+            @copy($sourceAbsolute, $target);
+        }
     }
 
     public function raw(string $key): ?string

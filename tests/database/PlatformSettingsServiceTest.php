@@ -48,4 +48,36 @@ final class PlatformSettingsServiceTest extends CIUnitTestCase
         $this->expectException(DomainException::class);
         (new PlatformSettingsService())->updateTextSettings(['site_name' => '   ']);
     }
+
+    public function testSyncRootFaviconWritesIcoFromPng(): void
+    {
+        $publicSource = FCPATH . 'uploads/brand/test-favicon-sync.png';
+        $publicDir = dirname($publicSource);
+        if (! is_dir($publicDir)) {
+            mkdir($publicDir, 0777, true);
+        }
+
+        $img = imagecreatetruecolor(64, 64);
+        $green = imagecolorallocate($img, 14, 58, 46);
+        imagefilledrectangle($img, 0, 0, 63, 63, $green);
+        imagepng($img, $publicSource);
+        imagedestroy($img);
+
+        $target = FCPATH . 'favicon.ico';
+        $backup = $target . '.bak-test';
+        if (is_file($target)) {
+            copy($target, $backup);
+        }
+
+        try {
+            (new PlatformSettingsService())->syncRootFavicon('/uploads/brand/test-favicon-sync.png');
+            $this->assertFileExists($target);
+            $this->assertGreaterThan(100, (int) filesize($target));
+        } finally {
+            @unlink($publicSource);
+            if (is_file($backup)) {
+                rename($backup, $target);
+            }
+        }
+    }
 }

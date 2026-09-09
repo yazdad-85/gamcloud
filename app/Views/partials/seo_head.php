@@ -25,8 +25,10 @@ $siteName = (string) $branding['site_name'];
 <meta name="description" content="<?= esc($seoDescription) ?>">
 <meta name="robots" content="<?= esc($seoRobots) ?>">
 <link rel="canonical" href="<?= esc($canonical) ?>">
+<link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="<?= esc($favicon) ?>" type="<?= esc($faviconType) ?>">
 <link rel="apple-touch-icon" href="<?= esc($favicon) ?>">
+<link rel="shortcut icon" href="/favicon.ico">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="<?= esc($siteName) ?>">
 <meta property="og:locale" content="id_ID">

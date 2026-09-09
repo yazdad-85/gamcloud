@@ -34,6 +34,7 @@ class SettingsController extends BaseController
             $service->storeBrandUpload($this->request->getFile('logo'), PlatformSettingsService::KEY_LOGO_PATH);
             $service->storeBrandUpload($this->request->getFile('favicon'), PlatformSettingsService::KEY_FAVICON_PATH);
             $service->storeBrandUpload($this->request->getFile('og_image'), PlatformSettingsService::KEY_OG_IMAGE_PATH);
+            $service->syncRootFavicon();
         } catch (DomainException $e) {
             return redirect()->back()->withInput()->with('error', $e->getMessage());
         }
