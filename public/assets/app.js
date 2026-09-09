@@ -133,7 +133,7 @@
                 tile === 1 ? 'tile-start' : '',
                 tile === total ? 'tile-finish' : '',
                 special ? 'tile-has-special' : '',
-                (!special && tile !== 1 && tile !== total && tile % 6 === 3) ? 'tile-theme-icon' : '',
+                (!special && tile !== 1 && tile !== total && (tile % 3 === 0 || tile % 5 === 2)) ? 'tile-theme-icon' : '',
                 (teamsByPosition[tile] || []).some((team) => team.uuid === currentTeamUuid) ? 'tile-current' : '',
                 recentMovement && (recentMovement.from === tile || recentMovement.to === tile || recentMovement.landed === tile) ? 'tile-recent' : '',
             ].filter(Boolean).join(' ');
@@ -145,7 +145,9 @@
             '</div>';
         }).join('');
 
-        element.innerHTML = '<div class="board-grid">' + tiles + '</div><svg class="board-path-layer" data-board-paths aria-hidden="true"></svg>';
+        element.innerHTML = '<div class="board-atmosphere" aria-hidden="true"></div>' +
+            '<div class="board-grid">' + tiles + '</div>' +
+            '<svg class="board-path-layer" data-board-paths aria-hidden="true"></svg>';
         window.requestAnimationFrame(() => renderBoardPaths(element, snapshot));
     }
 
@@ -158,11 +160,26 @@
         lab_challenge: '<path d="M9 2h6v6l5 12c.8 1.8-.5 3-2.4 3H6.4C4.5 23 3.2 21.8 4 20l5-12Z"/>',
     };
 
+    const THEME_ATMOSPHERE = {
+        classic_arena: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 220" preserveAspectRatio="xMidYMax meet"><path fill="%23ffffff" fill-opacity=".18" d="M0 220V140l60-20 40 30 50-50 70 40 40-25 80 45 60-35 70 30 50-40 80 50 70-20 90 35V220Z"/><circle cx="680" cy="48" r="28" fill="%23ffffff" fill-opacity=".14"/></svg>',
+        jungle_quest: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 220" preserveAspectRatio="xMidYMax meet"><path fill="%23ffffff" fill-opacity=".16" d="M0 220C40 120 90 90 140 140c40-70 90-90 140-40 50-80 120-70 160-10 55-75 130-60 170 10 40-55 110-50 150 20V220Z"/><ellipse cx="120" cy="70" rx="50" ry="24" fill="%23ffffff" fill-opacity=".1"/><ellipse cx="620" cy="60" rx="70" ry="28" fill="%23ffffff" fill-opacity=".1"/></svg>',
+        space_mission: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 220" preserveAspectRatio="xMidYMax meet"><circle cx="80" cy="40" r="2" fill="%23ffffff" fill-opacity=".55"/><circle cx="160" cy="70" r="1.5" fill="%23ffffff" fill-opacity=".45"/><circle cx="260" cy="30" r="2.2" fill="%23ffffff" fill-opacity=".5"/><circle cx="420" cy="55" r="1.6" fill="%23ffffff" fill-opacity=".4"/><circle cx="520" cy="25" r="2" fill="%23ffffff" fill-opacity=".55"/><circle cx="650" cy="60" r="1.8" fill="%23ffffff" fill-opacity=".45"/><circle cx="740" cy="35" r="2.4" fill="%23ffffff" fill-opacity=".5"/><circle cx="700" cy="90" r="36" fill="%23ffffff" fill-opacity=".08"/><path fill="%23ffffff" fill-opacity=".12" d="M0 220c80-30 140-70 220-50s150 20 240-10 160 10 240 40 80 20 100 20V220Z"/></svg>',
+        ocean_quest: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 220" preserveAspectRatio="xMidYMax meet"><path fill="none" stroke="%23ffffff" stroke-opacity=".28" stroke-width="6" d="M0 150c60-30 120-30 180 0s120 30 180 0 120-30 180 0 120 30 180 0 80-10 80-10"/><path fill="none" stroke="%23ffffff" stroke-opacity=".18" stroke-width="5" d="M0 180c70-24 130-24 200 0s140 24 210 0 140-24 210 0 120 10 180 10"/><circle cx="640" cy="50" r="34" fill="%23ffffff" fill-opacity=".12"/></svg>',
+        city_challenge: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 220" preserveAspectRatio="xMidYMax meet"><g fill="%23ffffff" fill-opacity=".2"><rect x="30" y="90" width="70" height="130"/><rect x="110" y="50" width="55" height="170"/><rect x="175" y="75" width="80" height="145"/><rect x="270" y="40" width="48" height="180"/><rect x="330" y="85" width="95" height="135"/><rect x="440" y="55" width="60" height="165"/><rect x="515" y="95" width="75" height="125"/><rect x="605" y="35" width="52" height="185"/><rect x="670" y="70" width="90" height="150"/></g><g fill="%23fbbf24" fill-opacity=".35"><rect x="125" y="70" width="8" height="10"/><rect x="145" y="70" width="8" height="10"/><rect x="285" y="60" width="8" height="10"/><rect x="455" y="75" width="8" height="10"/><rect x="620" y="55" width="8" height="10"/><rect x="640" y="55" width="8" height="10"/></g><path fill="%2360a5fa" fill-opacity=".25" d="M175 75h80v20H175z"/><path fill="%23ffffff" fill-opacity=".15" d="M350 85h40v30h-40z"/><text x="360" y="108" fill="%23ffffff" fill-opacity=".35" font-size="14" font-family="sans-serif">EDU</text></svg>',
+        lab_challenge: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 220" preserveAspectRatio="xMidYMax meet"><path fill="%23ffffff" fill-opacity=".14" d="M120 40h40v50l50 110H70l50-110z"/><path fill="%23ffffff" fill-opacity=".1" d="M360 30h50v60l60 120H300l60-120z"/><circle cx="620" cy="70" r="40" fill="%23ffffff" fill-opacity=".08"/><circle cx="700" cy="110" r="18" fill="%23ffffff" fill-opacity=".12"/><path fill="none" stroke="%23ffffff" stroke-opacity=".2" stroke-width="4" d="M40 190c80-20 140 20 220 0s150-20 230 0 150 20 230 0"/></svg>',
+    };
+
     function themeIconMaskUrl(themeKey) {
         const shape = THEME_ICON_SHAPES[themeKey] || THEME_ICON_SHAPES.classic_arena;
         const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' + shape + '</svg>';
 
         return 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+    }
+
+    function themeAtmosphereUrl(themeKey) {
+        const svg = THEME_ATMOSPHERE[themeKey] || THEME_ATMOSPHERE.classic_arena;
+
+        return 'url("data:image/svg+xml,' + svg + '")';
     }
 
     function applyBoardTheme(element, theme) {
@@ -177,6 +194,7 @@
             '--board-snake': palette.snake || '#22c55e',
             '--board-ladder': palette.ladder || '#facc15',
             '--board-icon': themeIconMaskUrl(theme && theme.key),
+            '--board-atmosphere': themeAtmosphereUrl(theme && theme.key),
         }).forEach(([key, value]) => element.style.setProperty(key, value));
 
         // Pawn avatars also render in the leaderboard, which sits outside

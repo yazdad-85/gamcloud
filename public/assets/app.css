@@ -2149,6 +2149,18 @@ textarea {
     z-index: 0;
 }
 
+.board-atmosphere {
+    background-image: var(--board-atmosphere);
+    background-position: center bottom;
+    background-repeat: no-repeat;
+    background-size: 100% auto;
+    inset: 0;
+    opacity: .42;
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+}
+
 .board-grid {
     display: grid;
     gap: 4px;
@@ -2638,12 +2650,24 @@ textarea {
     z-index: 1;
 }
 
-.projector .board-grid {
-    z-index: 2;
+.projector .board-atmosphere {
+    opacity: .55;
 }
 
-.projector .board-path-layer {
-    z-index: 4;
+.projector .tile-theme-icon::after {
+    height: 72%;
+    opacity: .3;
+    width: 72%;
+}
+
+.projector .board[data-theme="city_challenge"] .board-atmosphere {
+    opacity: .62;
+}
+
+.projector .board[data-theme="city_challenge"]::before {
+    opacity: .11;
+    -webkit-mask-size: 38px 38px;
+    mask-size: 38px 38px;
 }
 
 .projector .tile {
