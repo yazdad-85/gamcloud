@@ -1,7 +1,8 @@
+<?php $branding = (new \App\Services\Platform\PlatformSettingsService())->branding(); ?>
 <?php $this->setData([
-    'title' => 'Daftar Akun Guru — Ular Tangga Edukatif',
-    'seoTitle' => 'Daftar Akun Guru — Ular Tangga Edukatif',
-    'seoDescription' => 'Buat akun guru gratis untuk menyiapkan bank soal dan menjalankan kuis ular tangga di kelas.',
+    'title' => 'Daftar Akun Guru — ' . $branding['site_name'],
+    'seoTitle' => 'Daftar Akun Guru — ' . $branding['site_name'],
+    'seoDescription' => 'Buat akun guru gratis untuk menyiapkan bank soal dan menjalankan game kuis di kelas.',
     'publicPageClass' => 'public-page-scroll',
 ]); ?>
 <?= $this->extend('layouts/public') ?>

@@ -6,7 +6,7 @@
     <div style="margin-bottom:16px">
         <?= $this->include('partials/brand_logo', ['branding' => $branding, 'href' => '/', 'markClass' => 'dark-mark']) ?>
     </div>
-    <h1 class="page-title">Join Ular Tangga</h1>
+    <h1 class="page-title">Join Tim</h1>
     <p class="muted">Masukkan PIN room dan nama tim.</p>
     <?php if ($error): ?>
         <div class="alert"><?= esc($error) ?></div>

@@ -17,9 +17,9 @@ class PlatformSettingsService
     public const KEY_OG_IMAGE_PATH = 'og_image_path';
 
     private const DEFAULTS = [
-        self::KEY_SITE_NAME        => 'Ular Tangga Edukatif',
-        self::KEY_TAGLINE          => 'Kuis kelas interaktif berbasis papan permainan',
-        self::KEY_SEO_DESCRIPTION  => 'Jalankan kuis ular tangga di kelas: bank soal guru, tim siswa, proyektor, dan laporan hasil bermain.',
+        self::KEY_SITE_NAME        => 'Edugame',
+        self::KEY_TAGLINE          => 'Platform game kuis untuk kelas yang hidup',
+        self::KEY_SEO_DESCRIPTION  => 'Platform game edukatif untuk kelas: bank soal guru, tim siswa, proyektor, dan laporan hasil bermain.',
         self::KEY_LOGO_PATH        => '/assets/brand/logo.svg',
         self::KEY_FAVICON_PATH     => '/assets/brand/favicon.svg',
         self::KEY_OG_IMAGE_PATH    => '/assets/brand/og-default.png',

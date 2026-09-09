@@ -1,7 +1,7 @@
 <?php
 $settings = new \App\Services\Platform\PlatformSettingsService();
 $branding = $settings->branding();
-$siteName = (string) ($branding['site_name'] ?? 'Ular Tangga Edukatif');
+$siteName = (string) ($branding['site_name'] ?? 'Edugame');
 $favicon = (string) ($branding['favicon_path'] ?? '/assets/brand/favicon.svg');
 $faviconType = $settings->faviconMimeType($favicon);
 $logoPath = (string) ($branding['logo_path'] ?? '/assets/brand/logo.svg');

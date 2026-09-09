@@ -13,9 +13,9 @@ class JoinController extends BaseController
         return view('public/join', [
             'pin' => $pin,
             'error' => session()->getFlashdata('error'),
-            'title' => 'Join Tim — Ular Tangga Edukatif',
-            'seoTitle' => 'Join Tim — Ular Tangga Edukatif',
-            'seoDescription' => 'Masukkan PIN room dari guru, buat nama tim, lalu mainkan kuis ular tangga bersama kelas.',
+            'title' => 'Join Tim — Edugame',
+            'seoTitle' => 'Join Tim — Edugame',
+            'seoDescription' => 'Masukkan PIN room dari guru, buat nama tim, lalu mainkan kuis bersama kelas.',
             'publicPageClass' => 'public-page-scroll',
         ]);
     }

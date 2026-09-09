@@ -1,12 +1,12 @@
+<?php $branding = (new \App\Services\Platform\PlatformSettingsService())->branding(); ?>
 <?php $this->setData([
-    'title' => 'Login Guru — Ular Tangga Edukatif',
-    'seoTitle' => 'Login Guru — Ular Tangga Edukatif',
-    'seoDescription' => 'Masuk ke ruang guru untuk mengelola bank soal, membuat room ular tangga, dan memandu kelas bermain.',
+    'title' => 'Login Guru — ' . $branding['site_name'],
+    'seoTitle' => 'Login Guru — ' . $branding['site_name'],
+    'seoDescription' => 'Masuk ke ruang guru untuk mengelola bank soal, membuat room permainan, dan memandu kelas bermain.',
 ]); ?>
 <?= $this->extend('layouts/public') ?>
 
 <?= $this->section('content') ?>
-<?php $branding = (new \App\Services\Platform\PlatformSettingsService())->branding(); ?>
 <section class="login-landing" aria-label="Platform game kuis kelas">
     <div class="login-hero">
         <?= $this->include('partials/brand_logo', ['branding' => $branding, 'href' => '/']) ?>
