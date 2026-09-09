@@ -14,7 +14,7 @@
     <div class="public-page-body">
         <?= $this->renderSection('content') ?>
     </div>
-    <?= $this->include('partials/site_footer', ['footerVariant' => 'public']) ?>
+    <?= view('partials/site_footer', ['footerVariant' => 'public']) ?>
 </main>
 </body>
 </html>
