@@ -16,7 +16,7 @@ $currentPath = trim(service('uri')->getPath(), '/');
     <link rel="icon" href="<?= esc($favicon) ?>" type="<?= esc($faviconType) ?>">
     <meta name="csrf-token" content="<?= csrf_hash() ?>">
     <title><?= esc($title ?? $siteName) ?></title>
-    <link rel="stylesheet" href="/assets/app.css">
+    <link rel="stylesheet" href="/assets/app.css?v=<?= esc((string) @filemtime(FCPATH . 'assets/app.css')) ?>">
 </head>
 <body>
 <div class="shell">

@@ -2,6 +2,8 @@
 
 namespace App\Controllers;
 
+use App\Services\Platform\PlatformSettingsService;
+
 class Home extends BaseController
 {
     public function index()
@@ -14,13 +16,13 @@ class Home extends BaseController
             return redirect()->to('/teacher');
         }
 
+        $branding = (new PlatformSettingsService())->branding();
+
         return view('public/landing', [
-            'title' => 'Ular Tangga Edukatif — Kuis Kelas Interaktif',
-            'seoTitle' => 'Ular Tangga Edukatif — Kuis Kelas Interaktif',
-            'seoDescription' => 'Jalankan kuis ular tangga di kelas: bank soal guru, tim siswa, proyektor, dan laporan hasil bermain.',
-            'seoPath' => '/',
-            'bodyClass' => 'landing-body',
-            'publicPageClass' => 'landing-page',
+            'title'          => $branding['site_name'] . ' — Kuis Kelas Interaktif',
+            'seoTitle'       => $branding['site_name'] . ' — Kuis Kelas Interaktif',
+            'seoDescription' => $branding['seo_description'],
+            'seoPath'        => '/',
         ]);
     }
 }

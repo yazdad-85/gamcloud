@@ -16,4 +16,18 @@ final class HomeLandingTest extends CIUnitTestCase
         $this->assertFileExists(FCPATH . 'assets/brand/og-default.png');
         $this->assertFileExists(FCPATH . 'robots.txt');
     }
+
+    public function testLandingMatchesLoginShellMarkup(): void
+    {
+        $html = (string) file_get_contents(APPPATH . 'Views/public/landing.php');
+
+        $this->assertStringContainsString('login-landing', $html);
+        $this->assertStringContainsString('game-preview', $html);
+        $this->assertStringContainsString('feature-strip', $html);
+        $this->assertStringContainsString('landing-actions', $html);
+        $this->assertStringContainsString('/daftar-guru', $html);
+        $this->assertStringContainsString('/login', $html);
+        $this->assertStringContainsString('/join', $html);
+        $this->assertStringNotContainsString('landing-board', $html);
+    }
 }

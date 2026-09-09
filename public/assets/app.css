@@ -831,9 +831,30 @@ textarea {
 }
 
 .login-submit {
+    align-items: center;
     background: #10251f;
     border-color: #10251f;
+    display: inline-flex;
+    gap: 10px;
+    justify-content: space-between;
     min-height: 48px;
+    text-decoration: none;
+    width: 100%;
+}
+
+.landing-actions {
+    display: grid;
+    gap: 10px;
+}
+
+.landing-actions .login-submit {
+    box-sizing: border-box;
+}
+
+.landing-action-secondary {
+    justify-content: center;
+    text-align: center;
+    text-decoration: none;
     width: 100%;
 }
 
