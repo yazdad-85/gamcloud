@@ -9,7 +9,7 @@
 <?= $this->section('content') ?>
 <section class="registration-page">
     <div class="registration-copy">
-        <a class="brand-mark dark-mark" href="/login" aria-label="Ruang Main Guru"><span>RG</span></a>
+        <?= $this->include('partials/brand_logo', ['href' => '/', 'markClass' => 'dark-mark']) ?>
         <p class="login-eyebrow">Daftar akun guru</p>
         <h1>Mulai siapkan kelas yang bermain sambil berpikir.</h1>
         <p>

@@ -51,6 +51,28 @@ a {
     margin-bottom: 26px;
 }
 
+.brand-with-logo {
+    align-items: flex-start;
+    color: inherit;
+    display: grid;
+    gap: 8px;
+    text-decoration: none;
+}
+
+.brand-with-logo img {
+    display: block;
+    height: 32px;
+    max-width: 160px;
+    object-fit: contain;
+    width: auto;
+}
+
+.brand-with-logo span {
+    display: block;
+    font-size: 14px;
+    line-height: 1.25;
+}
+
 .nav {
     display: grid;
     gap: 8px;
@@ -555,6 +577,28 @@ textarea {
 .brand-mark span {
     color: #ffffff;
     font-weight: 900;
+}
+
+.brand-mark-logo {
+    background: rgba(255, 255, 255, .94);
+    height: auto;
+    min-height: 46px;
+    padding: 6px 10px;
+    text-decoration: none;
+    width: auto;
+}
+
+.brand-mark-logo img {
+    display: block;
+    height: 36px;
+    max-width: min(220px, 70vw);
+    object-fit: contain;
+    width: auto;
+}
+
+.brand-mark-logo.dark-mark {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, .12);
 }
 
 .login-eyebrow {

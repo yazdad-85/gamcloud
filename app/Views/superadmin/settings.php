@@ -35,23 +35,23 @@
 
     <div class="brand-upload-grid" style="margin-top:16px">
         <div>
-            <p class="muted">Logo saat ini</p>
+            <p class="muted">Logo website (tampil di beranda, login, daftar, sidebar)</p>
             <img src="<?= esc($branding['logo_path']) ?>" alt="Logo" style="max-height:48px;background:#fff;padding:8px;border-radius:8px">
             <label>Ganti logo (PNG/JPEG/WebP/SVG, max 2MB)
                 <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml">
             </label>
         </div>
         <div>
-            <p class="muted">Favicon saat ini</p>
+            <p class="muted">Favicon (ikon tab browser — sebaiknya kotak 32–256px, file kecil)</p>
             <img src="<?= esc($branding['favicon_path']) ?>" alt="Favicon" style="max-height:32px;background:#fff;padding:8px;border-radius:8px">
             <label>Ganti favicon
                 <input type="file" name="favicon" accept="image/png,image/jpeg,image/webp,image/svg+xml">
             </label>
         </div>
         <div>
-            <p class="muted">OG image saat ini</p>
+            <p class="muted">OG image — <strong>bukan</strong> di halaman web. Muncul saat link dibagikan (WhatsApp, Facebook, X, Telegram).</p>
             <img src="<?= esc($branding['og_image_path']) ?>" alt="OG" style="max-width:240px;border-radius:8px">
-            <label>Ganti OG image (PNG/JPEG/WebP, max 3MB)
+            <label>Ganti OG image (PNG/JPEG/WebP, max 3MB, ideal 1200×630)
                 <input type="file" name="og_image" accept="image/png,image/jpeg,image/webp">
             </label>
         </div>

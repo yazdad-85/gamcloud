@@ -6,12 +6,11 @@
 <?= $this->extend('layouts/public') ?>
 
 <?= $this->section('content') ?>
+<?php $branding = (new \App\Services\Platform\PlatformSettingsService())->branding(); ?>
 <section class="login-landing" aria-label="Platform game kuis kelas">
     <div class="login-hero">
-        <div class="brand-mark" aria-label="Ruang Main Guru">
-            <span>RG</span>
-        </div>
-        <p class="login-eyebrow">Platform game kuis untuk kelas yang hidup</p>
+        <?= $this->include('partials/brand_logo', ['branding' => $branding, 'href' => '/']) ?>
+        <p class="login-eyebrow"><?= esc($branding['tagline'] !== '' ? $branding['tagline'] : 'Platform game kuis untuk kelas yang hidup') ?></p>
         <h1>Ubah bank soal menjadi permainan yang ditunggu siswa.</h1>
         <p class="login-copy">
             Guru menyiapkan pertanyaan, siswa masuk sebagai tim, lalu kelas bergerak dalam tantangan, skor,

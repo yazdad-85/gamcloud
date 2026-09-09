@@ -1,10 +1,12 @@
 <?php
-$branding = (new \App\Services\Platform\PlatformSettingsService())->branding();
+$settings = new \App\Services\Platform\PlatformSettingsService();
+$branding = $settings->branding();
 $seoTitle = (string) ($seoTitle ?? $title ?? $branding['site_name']);
 $seoDescription = (string) ($seoDescription ?? $branding['seo_description']);
 $seoRobots = (string) ($seoRobots ?? 'index,follow');
 $seoImage = (string) ($seoImage ?? $branding['og_image_path']);
 $favicon = (string) ($branding['favicon_path'] ?? '/assets/brand/favicon.svg');
+$faviconType = $settings->faviconMimeType($favicon);
 $base = rtrim((string) config('App')->baseURL, '/');
 $path = '/' . ltrim((string) ($seoPath ?? uri_string()), '/');
 if ($path === '/') {
@@ -18,7 +20,6 @@ if (str_starts_with($seoImage, 'http://') || str_starts_with($seoImage, 'https:/
     $ogImage = $base . '/' . ltrim($seoImage, '/');
 }
 $siteName = (string) $branding['site_name'];
-$faviconType = str_ends_with(strtolower($favicon), '.svg') ? 'image/svg+xml' : 'image/png';
 ?>
 <title><?= esc($seoTitle) ?></title>
 <meta name="description" content="<?= esc($seoDescription) ?>">

@@ -4,7 +4,7 @@
 <?= $this->section('content') ?>
 <section class="registration-page compact-registration">
     <div class="registration-copy">
-        <a class="brand-mark dark-mark" href="/login" aria-label="Ruang Main Guru"><span>RG</span></a>
+        <?= $this->include('partials/brand_logo', ['href' => '/', 'markClass' => 'dark-mark']) ?>
         <p class="login-eyebrow">Verifikasi email</p>
         <h1>Kami perlu memastikan email guru benar-benar aktif.</h1>
         <p>Kode berlaku 15 menit. Setelah berhasil, akun guru langsung aktif dan bisa digunakan.</p>

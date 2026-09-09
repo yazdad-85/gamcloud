@@ -17,11 +17,15 @@ final class PlatformSettingsServiceTest extends CIUnitTestCase
 
     public function testBrandingFallsBackToDefaults(): void
     {
-        $branding = (new PlatformSettingsService())->branding(true);
+        $service = new PlatformSettingsService();
+        $branding = $service->branding(true);
 
         $this->assertSame('Ular Tangga Edukatif', $branding['site_name']);
         $this->assertSame('/assets/brand/logo.svg', $branding['logo_path']);
         $this->assertSame('/assets/brand/favicon.svg', $branding['favicon_path']);
+        $this->assertSame('image/svg+xml', $service->faviconMimeType($branding['favicon_path']));
+        $this->assertSame('image/png', $service->faviconMimeType('/uploads/brand/favicon_path-abc.png'));
+        $this->assertSame('image/jpeg', $service->faviconMimeType('/uploads/brand/x.jpeg'));
     }
 
     public function testUpdateTextSettingsPersists(): void

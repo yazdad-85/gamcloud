@@ -61,6 +61,25 @@ class PlatformSettingsService
         return $default ?? (self::DEFAULTS[$key] ?? '');
     }
 
+    public function faviconMimeType(?string $path = null): string
+    {
+        $path = strtolower((string) ($path ?? $this->get(self::KEY_FAVICON_PATH)));
+        if (str_ends_with($path, '.svg')) {
+            return 'image/svg+xml';
+        }
+        if (str_ends_with($path, '.webp')) {
+            return 'image/webp';
+        }
+        if (str_ends_with($path, '.jpg') || str_ends_with($path, '.jpeg')) {
+            return 'image/jpeg';
+        }
+        if (str_ends_with($path, '.ico')) {
+            return 'image/x-icon';
+        }
+
+        return 'image/png';
+    }
+
     public function set(string $key, ?string $value): void
     {
         $model = new PlatformSettingModel();

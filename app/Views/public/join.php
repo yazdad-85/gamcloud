@@ -1,7 +1,11 @@
 <?= $this->extend('layouts/public') ?>
 
 <?= $this->section('content') ?>
+<?php $branding = (new \App\Services\Platform\PlatformSettingsService())->branding(); ?>
 <section class="panel join-panel">
+    <div style="margin-bottom:16px">
+        <?= $this->include('partials/brand_logo', ['branding' => $branding, 'href' => '/', 'markClass' => 'dark-mark']) ?>
+    </div>
     <h1 class="page-title">Join Ular Tangga</h1>
     <p class="muted">Masukkan PIN room dan nama tim.</p>
     <?php if ($error): ?>
