@@ -6,6 +6,7 @@ $favicon = (string) ($branding['favicon_path'] ?? '/assets/brand/favicon.svg');
 $faviconType = $settings->faviconMimeType($favicon);
 $logoPath = (string) ($branding['logo_path'] ?? '/assets/brand/logo.svg');
 $currentPath = trim(service('uri')->getPath(), '/');
+$isSuperadmin = auth()->loggedIn() && auth()->user()->inGroup('superadmin');
 ?>
 <!doctype html>
 <html lang="id">
@@ -21,7 +22,7 @@ $currentPath = trim(service('uri')->getPath(), '/');
 <body>
 <div class="shell">
     <aside class="sidebar">
-        <a class="brand brand-with-logo" href="<?= auth()->user()?->inGroup('superadmin') ? '/superadmin' : '/teacher' ?>">
+        <a class="brand brand-with-logo" href="<?= $isSuperadmin ? '/superadmin' : '/teacher' ?>">
             <img src="<?= esc($logoPath) ?>" alt="<?= esc($siteName) ?>" width="140" height="32">
             <span><?= esc($siteName) ?></span>
         </a>
@@ -29,9 +30,11 @@ $currentPath = trim(service('uri')->getPath(), '/');
             <a class="<?= $currentPath === 'teacher' ? 'active' : '' ?>" href="/teacher">Dashboard</a>
             <a class="<?= str_starts_with($currentPath, 'teacher/questions') ? 'active' : '' ?>" href="/teacher/questions">Bank Soal</a>
             <a class="<?= str_starts_with($currentPath, 'teacher/games') ? 'active' : '' ?>" href="/teacher/games">Game</a>
-            <a class="<?= $currentPath === 'teacher/profile' ? 'active' : '' ?>" href="/teacher/profile">Profil</a>
+            <?php if (! $isSuperadmin): ?>
+                <a class="<?= $currentPath === 'teacher/profile' ? 'active' : '' ?>" href="/teacher/profile">Profil</a>
+            <?php endif ?>
             <a class="<?= str_starts_with($currentPath, 'join') ? 'active' : '' ?>" href="/join">Join Tim</a>
-            <?php if (auth()->loggedIn() && auth()->user()->inGroup('superadmin')): ?>
+            <?php if ($isSuperadmin): ?>
                 <a class="<?= $currentPath === 'superadmin' ? 'active' : '' ?>" href="/superadmin">Admin Platform</a>
                 <a class="<?= str_starts_with($currentPath, 'superadmin/settings') ? 'active' : '' ?>" href="/superadmin/settings">Pengaturan</a>
                 <a class="<?= str_starts_with($currentPath, 'superadmin/profile') ? 'active' : '' ?>" href="/superadmin/profile">Profil Admin</a>
