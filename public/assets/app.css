@@ -2968,6 +2968,15 @@ textarea {
         width: 38px;
     }
 
+    .brand-mark-logo {
+        height: auto;
+        width: auto;
+    }
+
+    .brand-mark-logo img {
+        height: 56px;
+    }
+
     .login-hero {
         gap: 10px;
     }
