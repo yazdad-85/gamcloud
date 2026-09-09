@@ -6,11 +6,12 @@ use App\Controllers\BaseController;
 use App\Models\TeacherModel;
 use App\Services\Auth\ProfilePasswordService;
 use App\Services\Security\TenantContext;
+use CodeIgniter\HTTP\RedirectResponse;
 use DomainException;
 
 class ProfileController extends BaseController
 {
-    public function edit(): string
+    public function edit(): string|RedirectResponse
     {
         try {
             $tenant = new TenantContext();
@@ -24,6 +25,10 @@ class ProfileController extends BaseController
         }
 
         if ($teacher === null) {
+            if (auth()->user()?->inGroup('superadmin')) {
+                return redirect()->to('/superadmin/profile');
+            }
+
             return redirect()->to('/teacher')->with('error', 'Profil guru tidak ditemukan.');
         }
 
