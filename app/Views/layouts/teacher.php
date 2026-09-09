@@ -1,26 +1,40 @@
+<?php
+$branding = (new \App\Services\Platform\PlatformSettingsService())->branding();
+$siteName = (string) ($branding['site_name'] ?? 'Ular Tangga Edukatif');
+$favicon = (string) ($branding['favicon_path'] ?? '/assets/brand/favicon.svg');
+$faviconType = str_ends_with(strtolower($favicon), '.svg') ? 'image/svg+xml' : 'image/png';
+$currentPath = trim(service('uri')->getPath(), '/');
+$brandParts = preg_split('/\s+/', trim($siteName)) ?: ['Ular', 'Tangga', 'Edukatif'];
+?>
 <!doctype html>
 <html lang="id">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
-    <link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="<?= esc($favicon) ?>" type="<?= esc($faviconType) ?>">
     <meta name="csrf-token" content="<?= csrf_hash() ?>">
-    <title><?= esc($title ?? 'Ular Tangga Edukatif') ?></title>
+    <title><?= esc($title ?? $siteName) ?></title>
     <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
-<?php $currentPath = trim(service('uri')->getPath(), '/'); ?>
 <div class="shell">
     <aside class="sidebar">
-        <div class="brand">Ular Tangga<br>Edukatif</div>
+        <div class="brand">
+            <?php foreach ($brandParts as $i => $part): ?>
+                <?= $i > 0 ? '<br>' : '' ?><?= esc($part) ?>
+            <?php endforeach ?>
+        </div>
         <nav class="nav">
             <a class="<?= $currentPath === 'teacher' ? 'active' : '' ?>" href="/teacher">Dashboard</a>
             <a class="<?= str_starts_with($currentPath, 'teacher/questions') ? 'active' : '' ?>" href="/teacher/questions">Bank Soal</a>
             <a class="<?= str_starts_with($currentPath, 'teacher/games') ? 'active' : '' ?>" href="/teacher/games">Game</a>
+            <a class="<?= $currentPath === 'teacher/profile' ? 'active' : '' ?>" href="/teacher/profile">Profil</a>
             <a class="<?= str_starts_with($currentPath, 'join') ? 'active' : '' ?>" href="/join">Join Tim</a>
             <?php if (auth()->loggedIn() && auth()->user()->inGroup('superadmin')): ?>
                 <a class="<?= $currentPath === 'superadmin' ? 'active' : '' ?>" href="/superadmin">Admin Platform</a>
+                <a class="<?= str_starts_with($currentPath, 'superadmin/settings') ? 'active' : '' ?>" href="/superadmin/settings">Pengaturan</a>
+                <a class="<?= str_starts_with($currentPath, 'superadmin/profile') ? 'active' : '' ?>" href="/superadmin/profile">Profil Admin</a>
                 <a class="<?= str_starts_with($currentPath, 'superadmin/registrations') ? 'active' : '' ?>" href="/superadmin/registrations">Riwayat Pendaftaran</a>
             <?php endif ?>
             <form method="post" action="/logout">

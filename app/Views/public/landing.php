@@ -1,10 +1,11 @@
 <?= $this->extend('layouts/public') ?>
 
 <?= $this->section('content') ?>
+<?php $branding = (new \App\Services\Platform\PlatformSettingsService())->branding(); ?>
 <div class="landing">
     <header class="landing-top">
         <a class="landing-brand" href="/">
-            <img src="/assets/brand/logo.svg" width="220" height="44" alt="Ular Tangga Edukatif">
+            <img src="<?= esc($branding['logo_path']) ?>" width="220" height="44" alt="<?= esc($branding['site_name']) ?>">
         </a>
         <nav class="landing-nav" aria-label="Navigasi utama">
             <a href="/join">Join Tim</a>
@@ -15,7 +16,7 @@
 
     <section class="landing-hero" aria-label="Beranda">
         <div class="landing-hero-copy">
-            <p class="landing-eyebrow">Ular Tangga Edukatif</p>
+            <p class="landing-eyebrow"><?= esc($branding['site_name']) ?></p>
             <h1>Kuis kelas yang bergerak di papan permainan.</h1>
             <p class="landing-lead">
                 Guru menyiapkan soal, siswa bermain sebagai tim, proyektor menampilkan papan —

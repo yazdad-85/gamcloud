@@ -37,12 +37,18 @@ $routes->get('teacher/games/(:segment)', 'Teacher\GameController::show/$1', ['fi
 $routes->get('teacher/games/(:segment)/control', 'Teacher\GameController::control/$1', ['filter' => 'teacherAccess']);
 $routes->get('teacher/games/(:segment)/report', 'Teacher\ReportController::show/$1', ['filter' => 'teacherAccess']);
 $routes->get('teacher/games/(:segment)/report/pdf', 'Teacher\ReportController::pdf/$1', ['filter' => 'teacherAccess']);
+$routes->get('teacher/profile', 'Teacher\ProfileController::edit', ['filter' => 'teacherAccess']);
+$routes->post('teacher/profile', 'Teacher\ProfileController::update', ['filter' => 'teacherAccess']);
 
 $routes->get('superadmin', 'Superadmin\DashboardController::index', ['filter' => 'superadminAccess']);
 $routes->get('superadmin/teachers', 'Superadmin\TeacherController::index', ['filter' => 'superadminAccess']);
 $routes->get('superadmin/registrations', 'Superadmin\RegistrationController::index', ['filter' => 'superadminAccess']);
 $routes->post('superadmin/registrations/(:segment)/approve', 'Superadmin\RegistrationController::approve/$1', ['filter' => 'superadminAccess']);
 $routes->post('superadmin/registrations/(:segment)/reject', 'Superadmin\RegistrationController::reject/$1', ['filter' => 'superadminAccess']);
+$routes->get('superadmin/settings', 'Superadmin\SettingsController::edit', ['filter' => 'superadminAccess']);
+$routes->post('superadmin/settings', 'Superadmin\SettingsController::update', ['filter' => 'superadminAccess']);
+$routes->get('superadmin/profile', 'Superadmin\ProfileController::edit', ['filter' => 'superadminAccess']);
+$routes->post('superadmin/profile', 'Superadmin\ProfileController::update', ['filter' => 'superadminAccess']);
 
 $routes->get('game/(:segment)/projector', 'Game\ProjectorController::show/$1');
 $routes->get('game/(:segment)/controller', 'Game\ControllerController::show/$1');

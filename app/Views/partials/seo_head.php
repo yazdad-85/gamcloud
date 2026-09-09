@@ -1,8 +1,10 @@
 <?php
-$seoTitle = (string) ($seoTitle ?? $title ?? 'Ular Tangga Edukatif');
-$seoDescription = (string) ($seoDescription ?? 'Platform kuis kelas interaktif berbasis ular tangga untuk guru dan siswa.');
+$branding = (new \App\Services\Platform\PlatformSettingsService())->branding();
+$seoTitle = (string) ($seoTitle ?? $title ?? $branding['site_name']);
+$seoDescription = (string) ($seoDescription ?? $branding['seo_description']);
 $seoRobots = (string) ($seoRobots ?? 'index,follow');
-$seoImage = (string) ($seoImage ?? '/assets/brand/og-default.png');
+$seoImage = (string) ($seoImage ?? $branding['og_image_path']);
+$favicon = (string) ($branding['favicon_path'] ?? '/assets/brand/favicon.svg');
 $base = rtrim((string) config('App')->baseURL, '/');
 $path = '/' . ltrim((string) ($seoPath ?? uri_string()), '/');
 if ($path === '/') {
@@ -15,14 +17,15 @@ if (str_starts_with($seoImage, 'http://') || str_starts_with($seoImage, 'https:/
 } else {
     $ogImage = $base . '/' . ltrim($seoImage, '/');
 }
-$siteName = 'Ular Tangga Edukatif';
+$siteName = (string) $branding['site_name'];
+$faviconType = str_ends_with(strtolower($favicon), '.svg') ? 'image/svg+xml' : 'image/png';
 ?>
 <title><?= esc($seoTitle) ?></title>
 <meta name="description" content="<?= esc($seoDescription) ?>">
 <meta name="robots" content="<?= esc($seoRobots) ?>">
 <link rel="canonical" href="<?= esc($canonical) ?>">
-<link rel="icon" href="/assets/brand/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/assets/brand/favicon.svg">
+<link rel="icon" href="<?= esc($favicon) ?>" type="<?= esc($faviconType) ?>">
+<link rel="apple-touch-icon" href="<?= esc($favicon) ?>">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="<?= esc($siteName) ?>">
 <meta property="og:locale" content="id_ID">

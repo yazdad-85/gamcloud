@@ -7,6 +7,8 @@
         <p class="muted">Pantauan seluruh guru, room, dan aktivitas dasar aplikasi.</p>
     </div>
     <div class="inline-actions">
+        <a class="button secondary" href="/superadmin/settings">Pengaturan</a>
+        <a class="button secondary" href="/superadmin/profile">Profil Admin</a>
         <a class="button secondary" href="/superadmin/registrations">Riwayat Pendaftaran</a>
         <a class="button secondary" href="/superadmin/teachers">Daftar Guru</a>
     </div>
