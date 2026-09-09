@@ -167,12 +167,24 @@
                     ?>
                     <label class="theme-option">
                         <input type="radio" name="board_template_id" value="<?= esc((string) $board['id']) ?>" <?= (string) old('board_template_id') === (string) $board['id'] ? 'checked' : '' ?>>
-                        <span class="theme-preview" style="background:<?= esc($palette['board'] ?? '#111827') ?>">
-                            <?php for ($i = 0; $i < 16; $i++): ?>
-                                <span class="theme-preview-tile" style="background:<?= esc($i % 2 === 0 ? ($palette['tileA'] ?? '#f8fafc') : ($palette['tileB'] ?? '#e0f2fe')) ?>"></span>
-                            <?php endfor ?>
-                            <span class="theme-preview-ladder" style="background:<?= esc($palette['ladder'] ?? '#facc15') ?>"></span>
-                            <span class="theme-preview-snake" style="background:<?= esc($palette['snake'] ?? '#22c55e') ?>"></span>
+                        <span class="theme-preview theme-preview-board" style="--preview-board:<?= esc($palette['board'] ?? '#111827') ?>;--preview-tile-a:<?= esc($palette['tileA'] ?? '#f8fafc') ?>;--preview-tile-b:<?= esc($palette['tileB'] ?? '#e0f2fe') ?>;--preview-snake:<?= esc($palette['snake'] ?? '#22c55e') ?>;--preview-ladder:<?= esc($palette['ladder'] ?? '#facc15') ?>;--preview-accent:<?= esc($palette['accent'] ?? '#f97316') ?>;background:<?= esc($palette['board'] ?? '#111827') ?>">
+                            <span class="theme-preview-grid">
+                                <?php for ($i = 0; $i < 16; $i++): ?>
+                                    <span class="theme-preview-tile" style="background:<?= esc($i % 2 === 0 ? ($palette['tileA'] ?? '#f8fafc') : ($palette['tileB'] ?? '#e0f2fe')) ?>"></span>
+                                <?php endfor ?>
+                            </span>
+                            <svg class="theme-preview-paths" viewBox="0 0 100 100" aria-hidden="true">
+                                <path class="theme-preview-ladder-rail" d="M28 78 L72 22" />
+                                <path class="theme-preview-ladder-rail" d="M36 80 L80 24" />
+                                <path class="theme-preview-ladder-rung" d="M31 68 L39 70" />
+                                <path class="theme-preview-ladder-rung" d="M42 52 L50 54" />
+                                <path class="theme-preview-ladder-rung" d="M54 36 L62 38" />
+                                <path class="theme-preview-snake-outline" d="M78 20 C58 34, 42 52, 24 78" />
+                                <path class="theme-preview-snake-body" d="M78 20 C58 34, 42 52, 24 78" />
+                                <ellipse class="theme-preview-snake-head" cx="78" cy="20" rx="7" ry="5" transform="rotate(-35 78 20)" />
+                                <circle class="theme-preview-snake-eye" cx="80" cy="18" r="1.1" />
+                                <path class="theme-preview-snake-tail" d="M24 78 L18 76 L16 78 L18 80 Z" />
+                            </svg>
                         </span>
                         <strong><?= esc($theme['name'] ?? $board['name']) ?></strong>
                         <span class="muted"><?= esc((string) $board['tile_count']) ?> kotak</span>

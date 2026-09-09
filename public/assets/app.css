@@ -2548,31 +2548,125 @@ textarea {
     stroke-linecap: round;
 }
 
+.ladder-rail-back {
+    stroke: color-mix(in srgb, var(--board-ladder, #facc15) 45%, #78350f);
+    stroke-width: 9;
+}
+
 .ladder-rail {
     stroke-width: 7;
 }
 
 .ladder-rung {
-    stroke-width: 4;
+    stroke-width: 4.5;
+    stroke: color-mix(in srgb, var(--board-ladder, #facc15) 82%, #ffffff);
 }
 
-.snake-path path {
+.snake-path path,
+.snake-body,
+.snake-body-outline,
+.snake-body-shine {
     fill: none;
-    stroke: var(--board-snake, #22c55e);
     stroke-linecap: round;
-    stroke-width: 14;
+    stroke-linejoin: round;
+}
+
+.snake-body-outline {
+    stroke: color-mix(in srgb, var(--board-snake, #22c55e) 42%, #052e16);
+    stroke-width: 22;
+}
+
+.snake-body {
+    stroke: var(--board-snake, #22c55e);
+    stroke-width: 16;
+}
+
+.snake-body-shine {
+    stroke: rgba(255, 255, 255, .38);
+    stroke-dasharray: 7 11;
+    stroke-width: 5;
 }
 
 .snake-head {
-    fill: color-mix(in srgb, var(--board-snake, #22c55e) 78%, #000000);
-    stroke: #dcfce7;
-    stroke-width: 3;
+    fill: color-mix(in srgb, var(--board-snake, #22c55e) 72%, #14532d);
+    stroke: #ecfdf5;
+    stroke-width: 2.5;
+}
+
+.snake-eye {
+    fill: #f8fafc;
+}
+
+.snake-eye-dot {
+    fill: #0f172a;
+}
+
+.snake-tongue {
+    fill: none;
+    stroke: #fb7185;
+    stroke-linecap: round;
+    stroke-width: 1.8;
 }
 
 .snake-tail {
-    fill: color-mix(in srgb, var(--board-snake, #22c55e) 25%, #ffffff);
-    stroke: color-mix(in srgb, var(--board-snake, #22c55e) 78%, #000000);
-    stroke-width: 2;
+    fill: color-mix(in srgb, var(--board-snake, #22c55e) 55%, #052e16);
+    stroke: color-mix(in srgb, var(--board-snake, #22c55e) 30%, #052e16);
+    stroke-width: 1.5;
+}
+
+/* —— Projector 2.5D stage —— */
+.projector .board {
+    isolation: isolate;
+    transform: perspective(1400px) rotateX(7deg);
+    transform-origin: center 78%;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, .1),
+        0 10px 0 rgba(15, 23, 42, .35),
+        0 28px 55px rgba(0, 0, 0, .45);
+}
+
+.projector .board::after {
+    background:
+        radial-gradient(ellipse 70% 45% at 50% 0%, color-mix(in srgb, var(--board-accent, #f97316) 35%, transparent), transparent 70%),
+        linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, .22));
+    border-radius: inherit;
+    content: "";
+    inset: 0;
+    mix-blend-mode: soft-light;
+    pointer-events: none;
+    position: absolute;
+    z-index: 1;
+}
+
+.projector .board-grid {
+    z-index: 2;
+}
+
+.projector .board-path-layer {
+    z-index: 4;
+}
+
+.projector .tile {
+    border-radius: 7px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .65),
+        inset 0 -3px 5px rgba(15, 23, 42, .12),
+        0 2px 0 rgba(15, 23, 42, .1);
+}
+
+.projector .tile-current {
+    transform: translateY(-3px) scale(1.03);
+}
+
+.projector .pawn-token {
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, .35) inset,
+        0 7px 12px rgba(0, 0, 0, .38);
+    transform: translateY(-4px);
+}
+
+.projector .pawn-token.active-pawn {
+    transform: translateY(-6px) scale(1.06);
 }
 
 .countdown-card {
@@ -3136,35 +3230,94 @@ textarea {
 }
 
 .theme-preview {
-    border-radius: 6px;
+    border-radius: 8px;
     display: grid;
     gap: 2px;
     grid-template-columns: repeat(4, 1fr);
-    height: 64px;
+    height: 72px;
     overflow: hidden;
-    padding: 4px;
+    padding: 5px;
     position: relative;
+    transform: perspective(420px) rotateX(8deg);
+    transform-origin: center bottom;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, .12),
+        0 8px 14px rgba(0, 0, 0, .28);
+}
+
+.theme-preview-board {
+    display: block;
+}
+
+.theme-preview-grid {
+    display: grid;
+    gap: 2px;
+    grid-template-columns: repeat(4, 1fr);
+    height: 100%;
+    position: relative;
+    z-index: 1;
 }
 
 .theme-preview-tile {
-    border-radius: 2px;
+    border-radius: 3px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45);
+    min-height: 14px;
+}
+
+.theme-preview-paths {
+    inset: 0;
+    position: absolute;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.theme-preview-ladder-rail {
+    fill: none;
+    stroke: var(--preview-ladder, #facc15);
+    stroke-linecap: round;
+    stroke-width: 3.2;
+}
+
+.theme-preview-ladder-rung {
+    fill: none;
+    stroke: color-mix(in srgb, var(--preview-ladder, #facc15) 80%, #fff);
+    stroke-linecap: round;
+    stroke-width: 2;
+}
+
+.theme-preview-snake-outline {
+    fill: none;
+    stroke: color-mix(in srgb, var(--preview-snake, #22c55e) 40%, #052e16);
+    stroke-linecap: round;
+    stroke-width: 7;
+}
+
+.theme-preview-snake-body {
+    fill: none;
+    stroke: var(--preview-snake, #22c55e);
+    stroke-linecap: round;
+    stroke-width: 4.8;
+}
+
+.theme-preview-snake-head {
+    fill: color-mix(in srgb, var(--preview-snake, #22c55e) 70%, #14532d);
+    stroke: #ecfdf5;
+    stroke-width: 1;
+}
+
+.theme-preview-snake-eye {
+    fill: #0f172a;
+}
+
+.theme-preview-snake-tail {
+    fill: color-mix(in srgb, var(--preview-snake, #22c55e) 50%, #052e16);
 }
 
 .theme-preview-ladder,
 .theme-preview-snake {
-    border-radius: 2px;
-    bottom: 4px;
-    height: 4px;
-    position: absolute;
-    width: 40%;
-}
-
-.theme-preview-ladder {
-    left: 4px;
-}
-
-.theme-preview-snake {
-    right: 4px;
+    display: none;
 }
 
 .theme-preview-auto {

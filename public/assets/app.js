@@ -224,20 +224,30 @@
             return '';
         }
 
-        const angle = Math.atan2(to.y - from.y, to.x - from.x);
-        const offsetX = Math.sin(angle) * 10;
-        const offsetY = -Math.cos(angle) * 10;
-        const rungCount = 5;
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const nx = -dy / length;
+        const ny = dx / length;
+        const offset = Math.min(12, Math.max(7, length * 0.05));
+        const rungCount = Math.max(3, Math.round(length / 28));
         const rungs = Array.from({length: rungCount}, (_, index) => {
             const t = (index + 1) / (rungCount + 1);
-            const cx = from.x + (to.x - from.x) * t;
-            const cy = from.y + (to.y - from.y) * t;
-            return '<line class="ladder-rung" x1="' + (cx - offsetX) + '" y1="' + (cy - offsetY) + '" x2="' + (cx + offsetX) + '" y2="' + (cy + offsetY) + '"></line>';
+            const cx = from.x + dx * t;
+            const cy = from.y + dy * t;
+            return '<line class="ladder-rung" x1="' + (cx - nx * offset) + '" y1="' + (cy - ny * offset) +
+                '" x2="' + (cx + nx * offset) + '" y2="' + (cy + ny * offset) + '"></line>';
         }).join('');
 
-        return '<g class="ladder-path" filter="url(#pathShadow)">' +
-            '<line class="ladder-rail" x1="' + (from.x - offsetX) + '" y1="' + (from.y - offsetY) + '" x2="' + (to.x - offsetX) + '" y2="' + (to.y - offsetY) + '"></line>' +
-            '<line class="ladder-rail" x1="' + (from.x + offsetX) + '" y1="' + (from.y + offsetY) + '" x2="' + (to.x + offsetX) + '" y2="' + (to.y + offsetY) + '"></line>' +
+        return '<g class="ladder-path ladder-path-rich" filter="url(#pathShadow)">' +
+            '<line class="ladder-rail ladder-rail-back" x1="' + (from.x - nx * offset) + '" y1="' + (from.y - ny * offset) +
+            '" x2="' + (to.x - nx * offset) + '" y2="' + (to.y - ny * offset) + '"></line>' +
+            '<line class="ladder-rail ladder-rail-back" x1="' + (from.x + nx * offset) + '" y1="' + (from.y + ny * offset) +
+            '" x2="' + (to.x + nx * offset) + '" y2="' + (to.y + ny * offset) + '"></line>' +
+            '<line class="ladder-rail" x1="' + (from.x - nx * offset) + '" y1="' + (from.y - ny * offset) +
+            '" x2="' + (to.x - nx * offset) + '" y2="' + (to.y - ny * offset) + '"></line>' +
+            '<line class="ladder-rail" x1="' + (from.x + nx * offset) + '" y1="' + (from.y + ny * offset) +
+            '" x2="' + (to.x + nx * offset) + '" y2="' + (to.y + ny * offset) + '"></line>' +
             rungs +
             '</g>';
     }
@@ -249,14 +259,36 @@
             return '';
         }
 
-        const midX = (from.x + to.x) / 2 + (from.y - to.y) * 0.18;
-        const midY = (from.y + to.y) / 2 + (to.x - from.x) * 0.12;
-        const d = 'M ' + from.x + ' ' + from.y + ' Q ' + midX + ' ' + midY + ' ' + to.x + ' ' + to.y;
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const px = -dy / length;
+        const py = dx / length;
+        const bulge = Math.min(92, Math.max(28, length * 0.38));
+        const c1x = from.x + dx * 0.28 + px * bulge;
+        const c1y = from.y + dy * 0.28 + py * bulge;
+        const c2x = from.x + dx * 0.72 - px * bulge * 0.85;
+        const c2y = from.y + dy * 0.72 - py * bulge * 0.85;
+        const d = 'M ' + from.x + ' ' + from.y +
+            ' C ' + c1x + ' ' + c1y + ', ' + c2x + ' ' + c2y + ', ' + to.x + ' ' + to.y;
+        const headAngle = Math.atan2(from.y - c1y, from.x - c1x) * 180 / Math.PI;
+        const tailAngle = Math.atan2(to.y - c2y, to.x - c2x) * 180 / Math.PI;
 
-        return '<g class="snake-path" filter="url(#pathShadow)">' +
-            '<path d="' + d + '"></path>' +
-            '<circle class="snake-head" cx="' + from.x + '" cy="' + from.y + '" r="9"></circle>' +
-            '<circle class="snake-tail" cx="' + to.x + '" cy="' + to.y + '" r="5"></circle>' +
+        return '<g class="snake-path snake-path-rich" filter="url(#pathShadow)">' +
+            '<path class="snake-body-outline" d="' + d + '"></path>' +
+            '<path class="snake-body" d="' + d + '"></path>' +
+            '<path class="snake-body-shine" d="' + d + '"></path>' +
+            '<g class="snake-head-group" transform="translate(' + from.x + ' ' + from.y + ') rotate(' + headAngle + ')">' +
+            '<ellipse class="snake-head" cx="2" cy="0" rx="15" ry="11"></ellipse>' +
+            '<circle class="snake-eye" cx="7" cy="-4.2" r="2.4"></circle>' +
+            '<circle class="snake-eye" cx="7" cy="4.2" r="2.4"></circle>' +
+            '<circle class="snake-eye-dot" cx="7.8" cy="-4.2" r="1.05"></circle>' +
+            '<circle class="snake-eye-dot" cx="7.8" cy="4.2" r="1.05"></circle>' +
+            '<path class="snake-tongue" d="M14 0 L21 -3.5 M14 0 L21 3.5"></path>' +
+            '</g>' +
+            '<g class="snake-tail-group" transform="translate(' + to.x + ' ' + to.y + ') rotate(' + tailAngle + ')">' +
+            '<path class="snake-tail" d="M0 0 L-10 -3.5 L-16 0 L-10 3.5 Z"></path>' +
+            '</g>' +
             '</g>';
     }
 
