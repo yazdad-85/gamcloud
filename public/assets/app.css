@@ -580,25 +580,35 @@ textarea {
 }
 
 .brand-mark-logo {
-    background: rgba(255, 255, 255, .94);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     height: auto;
-    min-height: 46px;
-    padding: 6px 10px;
+    justify-content: flex-start;
+    min-height: 0;
+    padding: 0;
     text-decoration: none;
     width: auto;
 }
 
 .brand-mark-logo img {
     display: block;
-    height: 36px;
-    max-width: min(220px, 70vw);
+    filter: drop-shadow(0 2px 10px rgba(0, 0, 0, .35));
+    height: 72px;
+    max-width: min(360px, 82vw);
     object-fit: contain;
     width: auto;
 }
 
 .brand-mark-logo.dark-mark {
-    background: #ffffff;
-    border-color: rgba(15, 23, 42, .12);
+    background: transparent;
+    border: 0;
+}
+
+.brand-mark-logo.dark-mark img {
+    filter: none;
+    height: 56px;
+    max-width: min(280px, 78vw);
 }
 
 .login-eyebrow {
