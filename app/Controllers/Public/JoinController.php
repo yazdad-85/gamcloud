@@ -16,6 +16,7 @@ class JoinController extends BaseController
             'title' => 'Join Tim — Ular Tangga Edukatif',
             'seoTitle' => 'Join Tim — Ular Tangga Edukatif',
             'seoDescription' => 'Masukkan PIN room dari guru, buat nama tim, lalu mainkan kuis ular tangga bersama kelas.',
+            'publicPageClass' => 'public-page-scroll',
         ]);
     }
 

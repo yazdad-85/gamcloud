@@ -505,6 +505,8 @@ textarea {
 }
 
 .public-page.public-page-scroll {
+    align-content: start;
+    align-items: start;
     height: auto;
     min-height: 100vh;
     overflow: auto;
@@ -513,6 +515,7 @@ textarea {
 .join-panel {
     margin: 0 auto;
     max-width: 460px;
+    padding-bottom: 24px;
     width: 100%;
 }
 
