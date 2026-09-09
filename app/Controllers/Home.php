@@ -17,10 +17,11 @@ class Home extends BaseController
         }
 
         $branding = (new PlatformSettingsService())->branding();
+        $siteName = (string) $branding['site_name'];
 
         return view('public/landing', [
-            'title'          => $branding['site_name'] . ' — Kuis Kelas Interaktif',
-            'seoTitle'       => $branding['site_name'] . ' — Kuis Kelas Interaktif',
+            'title'          => $siteName . ' — Platform Game Edukatif untuk Kelas',
+            'seoTitle'       => $siteName . ' — Platform Game Edukatif untuk Kelas',
             'seoDescription' => $branding['seo_description'],
             'seoPath'        => '/',
         ]);

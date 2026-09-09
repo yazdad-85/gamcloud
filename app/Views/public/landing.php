@@ -6,10 +6,10 @@
     <div class="login-hero">
         <?= $this->include('partials/brand_logo', ['branding' => $branding, 'href' => '/']) ?>
         <p class="login-eyebrow"><?= esc($branding['tagline'] !== '' ? $branding['tagline'] : $branding['site_name']) ?></p>
-        <h1>Kuis kelas yang bergerak di papan permainan.</h1>
+        <h1>Game kuis kelas yang interaktif dan siap berkembang.</h1>
         <p class="login-copy">
-            Guru menyiapkan soal, siswa bermain sebagai tim, proyektor menampilkan papan —
-            belajar tetap seru tanpa kehilangan arah.
+            Guru menyiapkan soal, siswa bermain sebagai tim, proyektor menampilkan permainan —
+            belajar tetap seru tanpa kehilangan arah. Mulai dari ular tangga, mode lain menyusul.
         </p>
 
         <div class="game-preview" aria-hidden="true">

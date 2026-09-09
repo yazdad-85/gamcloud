@@ -4,18 +4,22 @@ namespace App\Controllers\Public;
 
 use App\Controllers\BaseController;
 use App\Services\Game\GameEngine;
+use App\Services\Platform\PlatformSettingsService;
 use DomainException;
 
 class JoinController extends BaseController
 {
     public function index(?string $pin = null): string
     {
+        $branding = (new PlatformSettingsService())->branding();
+        $siteName = (string) $branding['site_name'];
+
         return view('public/join', [
             'pin' => $pin,
             'error' => session()->getFlashdata('error'),
-            'title' => 'Join Tim — Edugame',
-            'seoTitle' => 'Join Tim — Edugame',
-            'seoDescription' => 'Masukkan PIN room dari guru, buat nama tim, lalu mainkan kuis bersama kelas.',
+            'title' => 'Join Tim — ' . $siteName,
+            'seoTitle' => 'Join Tim — ' . $siteName,
+            'seoDescription' => 'Masukkan PIN room dari guru, buat nama tim, lalu ikut game kuis kelas di ' . $siteName . '.',
             'publicPageClass' => 'public-page-scroll',
         ]);
     }

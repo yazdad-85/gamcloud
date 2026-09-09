@@ -4,7 +4,7 @@
 <div class="topbar">
     <div>
         <h1 class="page-title">Pengaturan Platform</h1>
-        <p class="muted">Branding situs: nama, logo, favicon, dan gambar Open Graph.</p>
+        <p class="muted">Branding situs: nama platform, logo, favicon, dan gambar Open Graph. Nama sebaiknya netral (mis. Edugame), bukan nama satu mode game.</p>
     </div>
     <a class="button secondary" href="/superadmin">Kembali</a>
 </div>
