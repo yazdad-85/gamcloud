@@ -938,11 +938,18 @@ Add to `tests/database/TeacherCentralizedModeTest.php` (needs `use App\Models\Ga
         $engine->start($room['uuid']);
         $engine->roll($room['uuid'], $team['public_uuid']);
 
-        $turn = (new GameTurnModel())->where('room_id', $room['id'])->orderBy('id', 'DESC')->first();
+        $turn = (new GameTurnModel())->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
         $optionId = $this->firstOptionId((int) $turn['question_id']);
 
         $this->expectException(DomainException::class);
         $engine->answer($room['uuid'], $team['public_uuid'], $optionId);
+    }
+
+    private function roomId(string $roomUuid): int
+    {
+        $room = (new \App\Models\GameRoomModel())->where('public_uuid', $roomUuid)->first();
+
+        return (int) $room['id'];
     }
 
     private function firstOptionId(int $questionId): int
@@ -1250,7 +1257,7 @@ Add to `tests/database/TeacherCentralizedModeTest.php` (needs a Mystery landing 
         (new GameTeamModel())->update($team['id'], ['position' => 45]);
         $engine->roll($room['uuid'], $team['public_uuid']);
         $engine->startAnswerTimer($room['uuid']);
-        $turn = (new GameTurnModel())->where('room_id', $room['id'])->orderBy('id', 'DESC')->first();
+        $turn = (new GameTurnModel())->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
         $optionId = $this->correctOptionId((int) $turn['question_id']);
         (new GameTurnModel())->update($turn['id'], ['dice_value' => 1]);
         $engine->answer($room['uuid'], $team['public_uuid'], $optionId);
