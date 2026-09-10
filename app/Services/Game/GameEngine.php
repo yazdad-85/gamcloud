@@ -83,6 +83,11 @@ class GameEngine
         $questionSelection = $this->questionSelectionRules($questionSelectionSource, (int) $board['tile_count']);
         $gameModeKey = $this->validOption(strtoupper((string) ($options['game_mode'] ?? 'SNAKES_LADDERS')), $this->modes->playableKeys(), 'SNAKES_LADDERS');
         $gameMode = $this->modes->resolve($gameModeKey);
+        $participationMode = $this->validOption(
+            strtoupper((string) ($options['participation_mode'] ?? 'TEAM_DEVICE')),
+            ['TEAM_DEVICE', 'TEACHER_CENTRALIZED'],
+            'TEAM_DEVICE'
+        );
         $baseRoomState = [
             'max_position' => (int) $board['tile_count'],
         ];
@@ -101,6 +106,7 @@ class GameEngine
             'max_teams' => 6,
             'max_position' => (int) $board['tile_count'],
             'game_mode' => $gameMode->key(),
+            'participation_mode' => $participationMode,
             'mode_state_json' => json_encode($gameMode->initialState($baseRoomState, $board), JSON_UNESCAPED_SLASHES),
             'turn_order_mode' => $turnOrderMode,
             'finish_rule' => $finishRule,
@@ -2110,6 +2116,7 @@ class GameEngine
             'question_time_seconds' => (int) $room['question_time_seconds'],
             'max_position' => (int) $room['max_position'],
             'game_mode' => $room['game_mode'] ?? 'SNAKES_LADDERS',
+            'participation_mode' => $room['participation_mode'] ?? 'TEAM_DEVICE',
             'turn_order_mode' => $room['turn_order_mode'] ?? 'random',
             'finish_rule' => $room['finish_rule'] ?? 'clamp_finish',
             'scoring' => $this->scoringRules($room['scoring_json'] ?? []),

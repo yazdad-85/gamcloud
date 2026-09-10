@@ -25,6 +25,7 @@ class GameRoomModel extends Model
         'max_teams',
         'max_position',
         'game_mode',
+        'participation_mode',
         'mode_state_json',
         'turn_order_mode',
         'finish_rule',
