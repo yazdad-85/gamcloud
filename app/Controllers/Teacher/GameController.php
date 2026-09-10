@@ -97,6 +97,11 @@ class GameController extends BaseController
             $gameMode = 'SNAKES_LADDERS';
         }
 
+        $participationMode = strtoupper((string) $this->request->getPost('participation_mode'));
+        if (! in_array($participationMode, ['TEAM_DEVICE', 'TEACHER_CENTRALIZED'], true)) {
+            $participationMode = 'TEAM_DEVICE';
+        }
+
         $engine = new GameEngine();
         $questionBankSummary = $engine->questionBankSummary($teacherId);
         if ((int) $questionBankSummary['total'] < 1) {
@@ -114,6 +119,7 @@ class GameController extends BaseController
         try {
             $snapshot = $engine->createRoom($teacherId, $title, [
                 'game_mode' => $gameMode,
+                'participation_mode' => $participationMode,
                 'board_template_id' => $boardTemplateId,
                 'turn_order_mode' => $turnOrderMode,
                 'finish_rule' => $finishRule,

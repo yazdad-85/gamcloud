@@ -152,6 +152,20 @@
             <p class="field-help">Mode lain disiapkan sebagai fondasi platform, tetapi room aktif saat ini tetap memakai ular tangga kuis.</p>
         </div>
         <div class="field">
+            <label>Mode Partisipasi Tim</label>
+            <div class="check-grid">
+                <label class="check-option">
+                    <input type="radio" name="participation_mode" value="TEAM_DEVICE" <?= old('participation_mode', 'TEAM_DEVICE') === 'TEAM_DEVICE' ? 'checked' : '' ?>>
+                    <span>Device per Tim</span>
+                </label>
+                <label class="check-option">
+                    <input type="radio" name="participation_mode" value="TEACHER_CENTRALIZED" <?= old('participation_mode') === 'TEACHER_CENTRALIZED' ? 'checked' : '' ?>>
+                    <span>Tanpa Device (Terpusat)</span>
+                </label>
+            </div>
+            <p class="field-help">Tanpa Device: tidak ada join PIN, guru mengoperasikan dadu &amp; jawaban dari halaman Control Game (1 laptop + projector). Cocok untuk sekolah yang melarang HP siswa.</p>
+        </div>
+        <div class="field">
             <label>Tema Papan</label>
             <div class="theme-grid">
                 <label class="theme-option">
