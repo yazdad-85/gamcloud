@@ -618,15 +618,17 @@
             });
         }
 
-        draw();
-        window.setInterval(() => updateSummary(root, snapshot), 500);
-        window.setInterval(refresh, config.interval || 2200);
-
-        return {
+        const runtime = {
             getSnapshot: () => snapshot,
             refresh,
             setError,
         };
+
+        draw();
+        window.setInterval(() => updateSummary(root, snapshot), 500);
+        window.setInterval(() => runtime.refresh(), config.interval || 2200);
+
+        return runtime;
     }
 
     function teacherControl(config) {
