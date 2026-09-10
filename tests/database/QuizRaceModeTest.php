@@ -117,6 +117,160 @@ final class QuizRaceModeTest extends CIUnitTestCase
         $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'EASY');
     }
 
+    public function testAnswerMovesTeamByTierStepsOnCorrectAnswer(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Race Answer Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+            'track_length' => 18,
+            'lap_count' => 3,
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+        $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'MEDIUM');
+        $engine->startAnswerTimer($room['uuid']);
+        $turn = $this->latestTurn($room['uuid']);
+
+        $snapshot = $engine->answer($room['uuid'], $team['public_uuid'], $this->correctOptionId((int) $turn['question_id']));
+
+        // Track has no special tile at position 3 (procedurally generated
+        // tiles land on 4, 8, 12, 16), so this is a clean +2 (MEDIUM) move.
+        $this->assertSame(3, $this->teamInSnapshot($snapshot, $team['public_uuid'])['position']);
+    }
+
+    public function testAnswerWrongTierMovementStaysPutAtZeroSteps(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Race Wrong Answer Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+            'track_length' => 18,
+            'lap_count' => 3,
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+        $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'HARD');
+        $engine->startAnswerTimer($room['uuid']);
+        $turn = $this->latestTurn($room['uuid']);
+        $wrongOptionId = (int) (new QuestionOptionModel())
+            ->where('question_id', $turn['question_id'])
+            ->where('is_correct', 0)
+            ->first()['id'];
+
+        $snapshot = $engine->answer($room['uuid'], $team['public_uuid'], $wrongOptionId);
+
+        $this->assertSame(1, $this->teamInSnapshot($snapshot, $team['public_uuid'])['position']);
+    }
+
+    public function testAnswerAppliesBoostTileForExtraSteps(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Race Boost Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+            'track_length' => 18,
+            'lap_count' => 3,
+        ])['room'];
+        (new App\Models\BoardTemplateModel())->update(
+            (new App\Models\GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'],
+            ['special_tiles_json' => json_encode([['tile' => 3, 'type' => 'BONUS', 'steps' => 2, 'label' => 'Boost']])]
+        );
+        $this->actingAsTeacherOwner(1);
+        $team = (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+        // Start position 1, MEDIUM (+2) lands exactly on tile 3 (the Boost tile),
+        // which then adds its own +2 -> final position 5.
+        $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'MEDIUM');
+        $engine->startAnswerTimer($room['uuid']);
+        $turn = $this->latestTurn($room['uuid']);
+
+        $snapshot = $engine->answer($room['uuid'], $team['public_uuid'], $this->correctOptionId((int) $turn['question_id']));
+
+        $this->assertSame(5, $this->teamInSnapshot($snapshot, $team['public_uuid'])['position']);
+    }
+
+    public function testAnswerAppliesOilSpillLockRestrictingTeamsNextTierChoice(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Race Oil Spill Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+            'track_length' => 18,
+            'lap_count' => 3,
+        ])['room'];
+        (new App\Models\BoardTemplateModel())->update(
+            (new App\Models\GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'],
+            ['special_tiles_json' => json_encode([['tile' => 3, 'type' => 'TRAP', 'label' => 'Oil Spill']])]
+        );
+        $this->actingAsTeacherOwner(1);
+        $team = (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        $team2 = (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Dua')['team'];
+        $engine->start($room['uuid']);
+
+        // Start position 1, MEDIUM (+2) lands exactly on tile 3 (the Oil Spill tile).
+        $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'MEDIUM');
+        $engine->startAnswerTimer($room['uuid']);
+        $turn = $this->latestTurn($room['uuid']);
+        $snapshot = $engine->answer($room['uuid'], $team['public_uuid'], $this->correctOptionId((int) $turn['question_id']));
+        $this->assertTrue($this->teamInSnapshot($snapshot, $team['public_uuid'])['active_effects']['oil_spill_lock']);
+
+        // Tim Dua takes a neutral turn so play comes back around to Tim Satu.
+        $engine->selectDifficultyTier($room['uuid'], $team2['public_uuid'], 'EASY');
+        $engine->startAnswerTimer($room['uuid']);
+        $turn2 = $this->latestTurn($room['uuid']);
+        $engine->answer($room['uuid'], $team2['public_uuid'], $this->correctOptionId((int) $turn2['question_id']));
+
+        $this->expectException(DomainException::class);
+        $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'HARD');
+    }
+
+    public function testAnswerAppliesLapCheckpointBonusStep(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Race Checkpoint Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+            'track_length' => 18,
+            'lap_count' => 3,
+        ])['room'];
+        // Empty track: no Boost/Oil Spill tiles to interfere with the checkpoint math.
+        (new App\Models\BoardTemplateModel())->update(
+            (new App\Models\GameRoomModel())->where('public_uuid', $room['uuid'])->first()['board_template_id'],
+            ['special_tiles_json' => '[]']
+        );
+        $this->actingAsTeacherOwner(1);
+        $team = (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+        (new GameTeamModel())->update($this->teamRowId($team['public_uuid']), ['position' => 5]);
+
+        $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'MEDIUM');
+        $engine->startAnswerTimer($room['uuid']);
+        $turn = $this->latestTurn($room['uuid']);
+
+        $snapshot = $engine->answer($room['uuid'], $team['public_uuid'], $this->correctOptionId((int) $turn['question_id']));
+
+        // From 5, MEDIUM (+2) lands on 7 — track length 18 / 3 laps = lap boundaries
+        // at 6 and 12, so 5 -> 7 crosses one boundary and earns +1 checkpoint bonus.
+        $this->assertSame(8, $this->teamInSnapshot($snapshot, $team['public_uuid'])['position']);
+    }
+
+    private function teamRowId(string $teamUuid): int
+    {
+        return (int) (new GameTeamModel())->where('public_uuid', $teamUuid)->first()['id'];
+    }
+
     private function actingAsTeacherOwner(int $teacherId): void
     {
         $users = model(UserModel::class);

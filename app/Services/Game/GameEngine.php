@@ -651,8 +651,11 @@ class GameEngine
         $isCorrect = (int) $option['is_correct'] === 1;
         $dice = (int) $turn['dice_value'];
         $from = (int) $team['position'];
+        $isQuizRace = ($room['game_mode'] ?? 'SNAKES_LADDERS') === 'QUIZ_RACE';
         $movement = $isCorrect
-            ? $this->movementForCorrectAnswer($from, $dice, $room, $board, $team)
+            ? ($isQuizRace
+                ? $this->movementForRaceTierAnswer($from, (string) $turn['selected_tier'], $room, $board, $team)
+                : $this->movementForCorrectAnswer($from, $dice, $room, $board, $team))
             : [
                 'from' => $from,
                 'rolled_to' => $from,
@@ -664,6 +667,11 @@ class GameEngine
                 'active_effects' => $this->teamEffects($team),
                 'finish_bounced' => false,
             ];
+
+        if ($isQuizRace && $isCorrect && $this->race->checkpointCrossed($movement['from'], $movement['to'], (int) $room['max_position'], (int) ($room['lap_count'] ?? 1))) {
+            $movement['to'] = min((int) $room['max_position'], $movement['to'] + 1);
+            $movement['lap_checkpoint'] = true;
+        }
         $to = $movement['to'];
         $responseMs = $this->responseMs($turn);
         $newStreak = $isCorrect ? ((int) ($team['streak_count'] ?? 0) + 1) : 0;
@@ -790,6 +798,14 @@ class GameEngine
                     'landed' => $movement['landed'],
                     'to' => $movement['to'],
                 ],
+            ]);
+        }
+
+        if (! empty($movement['lap_checkpoint'])) {
+            $this->recordEvent($room, 'lap.checkpoint', [
+                'team_uuid' => $team['public_uuid'],
+                'lap' => $this->race->lapForPosition($movement['to'], (int) $room['max_position'], (int) ($room['lap_count'] ?? 1)),
+                'bonus_steps' => 1,
             ]);
         }
 
@@ -1582,6 +1598,22 @@ class GameEngine
             'score_delta' => (int) $tileEffect['score_delta'],
             'active_effects' => $activeEffects,
             'finish_bounced' => $finishBounced,
+            'pending_board_challenge' => null,
+        ];
+    }
+
+    private function movementForRaceTierAnswer(int $from, string $tier, array $room, array $board, array $team): array
+    {
+        $result = $this->race->movementForTierAnswer($from, $tier, $room, $board);
+        $activeEffects = $this->teamEffects($team);
+        if (($result['special'] ?? null) === 'OIL_SPILL') {
+            $activeEffects['oil_spill_lock'] = true;
+        }
+
+        return $result + [
+            'rolled_to' => $result['to'],
+            'active_effects' => $activeEffects,
+            'finish_bounced' => false,
             'pending_board_challenge' => null,
         ];
     }
