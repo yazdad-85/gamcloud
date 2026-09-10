@@ -82,10 +82,17 @@ final class GameEngineHardeningTest extends CIUnitTestCase
 
     public function testDifficultyZoneFallsBackWhenRequestedDifficultyIsEmpty(): void
     {
+        $topic = $this->seedTopic(1, 'Topik Tanpa Soal HARD');
+        $this->seedTopicQuestion(1, $topic['id'], 'Soal easy topik terbatas', 'EASY');
+        $this->seedTopicQuestion(1, $topic['id'], 'Soal medium topik terbatas', 'MEDIUM');
+
         $engine = new GameEngine();
         $room = $engine->createRoom(1, 'Difficulty Zone Fallback Test', [
             'turn_order_mode' => 'join_order',
-            'question_selection' => ['strategy' => 'difficulty_zone'],
+            'question_selection' => [
+                'strategy' => 'difficulty_zone',
+                'topic_uuids' => [$topic['public_uuid']],
+            ],
         ])['room'];
         $team = $engine->joinByPin($room['pin'], 'Tim Hard Kosong')['team'];
 
