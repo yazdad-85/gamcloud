@@ -8,12 +8,22 @@
 
 **Tech Stack:** PHP 8 / CodeIgniter 4, MySQL/MariaDB, CodeIgniter Shield (auth), vanilla JS (`public/assets/app.js`), PHPUnit with `DatabaseTestTrait`.
 
+## Implementation Status (2026-09-10)
+
+- Tasks 1-8: complete.
+- Task 9: implementation complete; route, CSRF filter, PHP/JS syntax, and regression suite verified.
+- Task 10: complete with centralized Mystery Box timer coverage.
+- Task 11: implementation complete; pending questions remain visible but unanswerable until the teacher starts the timer.
+- Task 12: implementation complete; turn announcements wait for movement animation before taking over the projector.
+- Automated verification: `vendor/bin/phpunit` passes 119 tests with 421 assertions.
+- Manual browser walkthrough for Tasks 9, 11, and 12 remains recommended on the target projector setup.
+
 ---
 
 ## Before You Start
 
 - Working directory for every command in this plan: `/Users/mbp19/Documents/YAZDAD/APLIKASI PRODUKSI/games/ular-tangga` (this is its own git repo, separate from the `games` folder above it).
-- Run tests with: `vendor/bin/phpunit --testsuite database` (the `database` group uses `DatabaseTestTrait`, which wraps each test in a transaction and rolls it back — you don't need to clean up manually).
+- Run the whole suite with: `vendor/bin/phpunit` (there's a single unnamed testsuite covering `./tests` — no `--testsuite` flag needed). Tests that use `DatabaseTestTrait` run against an isolated in-memory SQLite database (`Config\Database::$tests`, wired up automatically when `ENVIRONMENT=testing`) and each test is wrapped in a transaction that's rolled back afterward — you don't need to clean up manually, and this never touches the real dev database in `.env`.
 - The design this plan implements is fully written out in `docs/superpowers/specs/2026-09-10-mode-tanpa-device-design.md`. Read it once before starting if anything below feels unmotivated — the "why" lives there, this document is the "how".
 - Existing conventions this plan follows (verified by reading the current code, not assumed):
   - No HTTP/feature tests exist anywhere in this repo (`tests/` has zero `FeatureTestTrait` usage). Business logic is tested by calling `GameEngine`/`TeamSessionService` methods directly. This plan does the same — controller/route changes are wired but not separately unit-tested, matching the existing pattern.
@@ -179,7 +189,7 @@ Expected: `OK (3 tests, ...)`
 
 - [ ] **Step 8: Run the full suite to check for regressions**
 
-Run: `vendor/bin/phpunit --testsuite database`
+Run: `vendor/bin/phpunit`
 Expected: All tests pass (same count as before this task, plus the 3 new ones).
 
 - [ ] **Step 9: Commit**
@@ -386,7 +396,7 @@ Expected: `OK (6 tests, ...)`
 
 - [ ] **Step 5: Run the full suite to check for regressions**
 
-Run: `vendor/bin/phpunit --testsuite database`
+Run: `vendor/bin/phpunit`
 Expected: All tests pass, including `tests/database/TeamSessionTtlTest.php` unchanged.
 
 - [ ] **Step 6: Commit**
@@ -654,7 +664,7 @@ Expected: `OK (10 tests, ...)`
 
 - [ ] **Step 5: Run the full suite to check for regressions**
 
-Run: `vendor/bin/phpunit --testsuite database`
+Run: `vendor/bin/phpunit`
 Expected: All tests pass — in particular every existing test that calls `joinByPin()` (there are many, across `GameEngineHardeningTest.php`, `TeamSessionTtlTest.php`, `ProjectorTokenSecurityTest.php`) must behave identically, since `joinByPin()`'s externally-visible behavior didn't change, only its internals were extracted.
 
 - [ ] **Step 6: Commit**
@@ -868,7 +878,7 @@ Expected: `OK (1 test, ...)`
 
 - [ ] **Step 5: Run the full suite to check for regressions**
 
-Run: `vendor/bin/phpunit --testsuite database`
+Run: `vendor/bin/phpunit`
 Expected: All tests pass.
 
 - [ ] **Step 6: Commit**
@@ -1007,7 +1017,7 @@ Expected: `OK (14 tests, ...)`
 
 - [ ] **Step 5: Run the full suite to check for regressions**
 
-Run: `vendor/bin/phpunit --testsuite database`
+Run: `vendor/bin/phpunit`
 Expected: All tests pass — every existing `roll()`-touching test in `GameEngineHardeningTest.php` runs against `TEAM_DEVICE` rooms (the default), so none of them should change behavior.
 
 - [ ] **Step 6: Commit**
@@ -1136,7 +1146,7 @@ Expected: `OK (17 tests, ...)`
 
 - [ ] **Step 5: Run the full suite to check for regressions**
 
-Run: `vendor/bin/phpunit --testsuite database`
+Run: `vendor/bin/phpunit`
 Expected: All tests pass.
 
 - [ ] **Step 6: Commit**
@@ -1332,7 +1342,7 @@ Expected: `OK (19 tests, ...)`
 
 - [ ] **Step 5: Run the full suite to check for regressions**
 
-Run: `vendor/bin/phpunit --testsuite database`
+Run: `vendor/bin/phpunit`
 Expected: All tests pass, including every Mystery Box test in `GameEngineHardeningTest.php` (they all run against `TEAM_DEVICE` rooms by default, so `$deferTimer` is always `false` for them).
 
 - [ ] **Step 6: Commit**
@@ -1714,5 +1724,5 @@ git commit -m "feat: show a full-screen turn-change announcement on the projecto
 
 ## Final Check
 
-- [ ] Run the full suite one more time: `vendor/bin/phpunit --testsuite database` — expect everything green.
+- [x] Run the full suite one more time: `vendor/bin/phpunit` — 119 tests, 421 assertions passed.
 - [ ] Walk through the manual verification checklists for Tasks 3, 5, 9, 11, and 12 back-to-back in one sitting, on both a `TEAM_DEVICE` room and a `TEACHER_CENTRALIZED` room, to confirm the two modes don't interfere with each other on the same running app.
