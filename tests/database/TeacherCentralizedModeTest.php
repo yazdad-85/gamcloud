@@ -3,6 +3,7 @@
 use App\Database\Seeds\DemoGameSeeder;
 use App\Models\GameRoomModel;
 use App\Models\GameTeamModel;
+use App\Models\GameTurnModel;
 use App\Models\TeacherModel;
 use App\Services\Game\GameEngine;
 use App\Services\Game\Uuid;
@@ -187,6 +188,74 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
         $this->expectException(DomainException::class);
         $this->expectExceptionMessage('layar guru');
         $engine->joinByPin($room['pin'], 'Tim Nekat Join');
+    }
+
+    public function testRollDefersDeadlineForCentralizedRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Pending Start Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = $engine->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        $engine->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+
+        $snapshot = $engine->roll($room['uuid'], $team['public_uuid']);
+
+        $this->assertSame('QUESTION_PENDING_START', $snapshot['current_turn']['state']);
+        $this->assertNull($snapshot['current_turn']['deadline_at']);
+        $this->assertNotNull($snapshot['current_turn']['question']);
+    }
+
+    public function testRollKeepsImmediateDeadlineForTeamDeviceRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Immediate Deadline Test', [
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Biasa')['team'];
+        $engine->start($room['uuid']);
+
+        $snapshot = $engine->roll($room['uuid'], $team['public_uuid']);
+
+        $this->assertSame('QUESTION_ACTIVE', $snapshot['current_turn']['state']);
+        $this->assertNotNull($snapshot['current_turn']['deadline_at']);
+    }
+
+    public function testPendingStartTurnCannotBeAnsweredOrForceTimedOut(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Pending Start Guard Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = $engine->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        $engine->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+        $engine->roll($room['uuid'], $team['public_uuid']);
+
+        $turn = (new GameTurnModel())->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
+        $optionId = $this->firstOptionId((int) $turn['question_id']);
+
+        $this->expectException(DomainException::class);
+        $engine->answer($room['uuid'], $team['public_uuid'], $optionId);
+    }
+
+    private function roomId(string $roomUuid): int
+    {
+        $room = (new GameRoomModel())->where('public_uuid', $roomUuid)->first();
+
+        return (int) $room['id'];
+    }
+
+    private function firstOptionId(int $questionId): int
+    {
+        $option = (new \App\Models\QuestionOptionModel())->where('question_id', $questionId)->first();
+
+        return (int) $option['id'];
     }
 
     private function actingAsTeacherOwner(int $teacherId): void
