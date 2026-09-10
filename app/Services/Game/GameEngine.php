@@ -16,6 +16,7 @@ use App\Models\ScoreTransactionModel;
 use App\Services\Game\Modes\GameModeCatalog;
 use App\Services\Realtime\ChannelName;
 use App\Services\Realtime\RealtimeService;
+use App\Services\Security\TenantContext;
 use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use Config\Database;
@@ -141,6 +142,47 @@ class GameEngine
             throw new DomainException('Room sudah tidak menerima tim baru.');
         }
 
+        $result = $this->insertTeamIntoRoom($room, $teamName, $avatar);
+
+        return $result + ['snapshot' => $this->snapshot($result['room']['public_uuid'])];
+    }
+
+    public function addTeamByOwner(string $roomUuid, string $teamName, string $avatar = 'robot'): array
+    {
+        $room = (new TenantContext())->assertRoomOwner($roomUuid);
+        if (($room['participation_mode'] ?? 'TEAM_DEVICE') !== 'TEACHER_CENTRALIZED') {
+            throw new DomainException('Room ini memakai Device per Tim, tim ditambahkan lewat join PIN.');
+        }
+        if ($room['status'] !== 'LOBBY') {
+            throw new DomainException('Tim hanya bisa ditambah selama room di status LOBBY.');
+        }
+
+        $result = $this->insertTeamIntoRoom($room, $teamName, $avatar);
+
+        return $result + ['snapshot' => $this->snapshot($result['room']['public_uuid'])];
+    }
+
+    public function removeTeamByOwner(string $roomUuid, string $teamUuid): array
+    {
+        $room = (new TenantContext())->assertRoomOwner($roomUuid);
+        if ($room['status'] !== 'LOBBY') {
+            throw new DomainException('Tim hanya bisa dihapus selama room di status LOBBY.');
+        }
+
+        $team = $this->teamByUuid($teamUuid, (int) $room['id']);
+        (new GameTeamModel())->delete($team['id']);
+        $this->bumpRoom($room['id']);
+        $room = $this->roomById((int) $room['id']);
+        $this->recordEvent($room, 'room.team_removed', [
+            'team_uuid' => $team['public_uuid'],
+            'team_name' => $team['name'],
+        ]);
+
+        return $this->snapshot($room['public_uuid'], null, true);
+    }
+
+    private function insertTeamIntoRoom(array $room, string $teamName, string $avatar): array
+    {
         $teamName = trim($teamName);
         if ($teamName === '') {
             throw new DomainException('Nama tim wajib diisi.');
@@ -177,12 +219,7 @@ class GameEngine
         $room = $this->roomById((int) $room['id']);
         $this->recordEvent($room, 'room.team_joined', ['team' => $this->publicTeam($team)]);
 
-        return [
-            'room' => $room,
-            'team' => $team,
-            'token' => $token,
-            'snapshot' => $this->snapshot($room['public_uuid']),
-        ];
+        return ['room' => $room, 'team' => $team, 'token' => $token];
     }
 
     public function start(string $roomUuid): array
