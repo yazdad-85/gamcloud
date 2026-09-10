@@ -102,6 +102,24 @@ class RoomsController extends BaseController
         });
     }
 
+    public function selectTier(string $roomUuid)
+    {
+        $payload = $this->request->getJSON(true) ?: $this->request->getPost();
+        $teamUuid = (string) ($payload['team_uuid'] ?? $this->request->getGet('team'));
+        $tier = (string) ($payload['tier'] ?? '');
+
+        return $this->respond(function () use ($roomUuid, $teamUuid, $tier, $payload): array {
+            (new TeamSessionService())->assertTeamSession($roomUuid, $teamUuid);
+
+            return (new GameEngine())->selectDifficultyTier(
+                $roomUuid,
+                $teamUuid,
+                $tier,
+                $this->request->getHeaderLine('Idempotency-Key') ?: ($payload['idempotency_key'] ?? null)
+            );
+        });
+    }
+
     public function answer(string $roomUuid)
     {
         $payload = $this->request->getJSON(true) ?: $this->request->getPost();

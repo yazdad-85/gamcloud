@@ -78,6 +78,7 @@ $routes->group('api/v1', static function ($routes): void {
     $routes->post('rooms/(:segment)/teams', 'Api\V1\RoomsController::addTeam/$1', ['filter' => 'rateLimit:20,60,api-mutation']);
     $routes->post('rooms/(:segment)/teams/(:segment)/remove', 'Api\V1\RoomsController::removeTeam/$1/$2', ['filter' => 'rateLimit:20,60,api-mutation']);
     $routes->post('rooms/(:segment)/roll', 'Api\V1\RoomsController::roll/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
+    $routes->post('rooms/(:segment)/select-tier', 'Api\V1\RoomsController::selectTier/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
     $routes->post('rooms/(:segment)/answer', 'Api\V1\RoomsController::answer/$1', ['filter' => 'rateLimit:45,60,api-mutation']);
     $routes->post('rooms/(:segment)/mystery/choose', 'Api\V1\RoomsController::chooseMystery/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
     $routes->post('rooms/(:segment)/mystery/answer', 'Api\V1\RoomsController::answerMystery/$1', ['filter' => 'rateLimit:45,60,api-mutation']);
