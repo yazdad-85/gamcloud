@@ -18,6 +18,7 @@ $isSuperadmin = auth()->loggedIn() && auth()->user()->inGroup('superadmin');
     <meta name="csrf-token" content="<?= csrf_hash() ?>">
     <title><?= esc($title ?? $siteName) ?></title>
     <link rel="stylesheet" href="/assets/app.css?v=<?= esc((string) @filemtime(FCPATH . 'assets/app.css')) ?>">
+    <link rel="stylesheet" href="/assets/game-fx.css?v=<?= esc((string) @filemtime(FCPATH . 'assets/game-fx.css')) ?>">
 </head>
 <body>
 <div class="shell">
@@ -51,7 +52,7 @@ $isSuperadmin = auth()->loggedIn() && auth()->user()->inGroup('superadmin');
         <?= view('partials/site_footer', ['footerVariant' => 'app', 'branding' => $branding]) ?>
     </main>
 </div>
-<script src="/assets/app.js"></script>
+<script src="/assets/app.js?v=<?= esc((string) @filemtime(FCPATH . 'assets/app.js')) ?>"></script>
 <?= $this->renderSection('scripts') ?>
 </body>
 </html>
