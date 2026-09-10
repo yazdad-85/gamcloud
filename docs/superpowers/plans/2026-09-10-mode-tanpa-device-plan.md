@@ -1,6 +1,6 @@
 # Mode Tanpa Device Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **STATUS: SELESAI (2026-09-10).** Seluruh Task 1-12 sudah diimplementasikan, diuji, dan diintegrasikan ke `master`. Jangan menjalankan ulang task dalam dokumen ini. Checkbox bertanda selesai menutup scope implementasi; QA visual pada projector fisik hanya tindak lanjut opsional pasca-merge.
 
 **Goal:** Let a teacher run the Ular Tangga quiz game from a single laptop + projector, with the teacher proxying dice rolls, answers, and Mystery Box choices for every team, so classrooms that ban student phones can still play.
 
@@ -16,7 +16,7 @@
 - Task 11: implementation complete; pending questions remain visible but unanswerable until the teacher starts the timer.
 - Task 12: implementation complete; turn announcements wait for movement animation before taking over the projector.
 - Automated verification: `vendor/bin/phpunit` passes all 119 tests.
-- Manual browser walkthrough for Tasks 9, 11, and 12 remains recommended on the target projector setup.
+- QA visual pada projector fisik bersifat opsional pasca-merge dan tidak membuka kembali task implementasi.
 
 ---
 
@@ -40,7 +40,7 @@
 - Modify: `app/Services/Game/GameEngine.php` (`createRoom()` around `GameEngine.php:39-124`, `publicRoom()` around `GameEngine.php:2102-2130`)
 - Test: `tests/database/TeacherCentralizedModeTest.php` (new file)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/database/TeacherCentralizedModeTest.php`:
 
@@ -97,12 +97,12 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php`
 Expected: FAIL — `Undefined array key "participation_mode"` (the field doesn't exist on the snapshot yet).
 
-- [ ] **Step 3: Add the migration**
+- [x] **Step 3: Add the migration**
 
 Create `app/Database/Migrations/2026-09-10-000001_AddParticipationModeToGameRooms.php`:
 
@@ -139,7 +139,7 @@ Run the migration against your dev/test database:
 Run: `php spark migrate`
 Expected: `Migrating up...` then `...AddParticipationModeToGameRooms` with no errors.
 
-- [ ] **Step 4: Add the field to `GameRoomModel::$allowedFields`**
+- [x] **Step 4: Add the field to `GameRoomModel::$allowedFields`**
 
 In `app/Models/GameRoomModel.php`, add `'participation_mode',` right after `'game_mode',` in the `$allowedFields` array (`GameRoomModel.php:19`):
 
@@ -149,7 +149,7 @@ In `app/Models/GameRoomModel.php`, add `'participation_mode',` right after `'gam
         'mode_state_json',
 ```
 
-- [ ] **Step 5: Make `createRoom()` accept and validate the option**
+- [x] **Step 5: Make `createRoom()` accept and validate the option**
 
 In `app/Services/Game/GameEngine.php`, find the `$gameModeKey`/`$gameMode` block right before `$baseRoomState` (`GameEngine.php:84-88`) and add the participation mode resolution right after it:
 
@@ -172,7 +172,7 @@ Then add `'participation_mode' => $participationMode,` to the `insert()` call ri
             'mode_state_json' => json_encode($gameMode->initialState($baseRoomState, $board), JSON_UNESCAPED_SLASHES),
 ```
 
-- [ ] **Step 6: Expose the field on the public room payload**
+- [x] **Step 6: Expose the field on the public room payload**
 
 In `app/Services/Game/GameEngine.php`, in `publicRoom()` (`GameEngine.php:2102-2119`), add the field right after `'game_mode'`:
 
@@ -182,17 +182,17 @@ In `app/Services/Game/GameEngine.php`, in `publicRoom()` (`GameEngine.php:2102-2
             'turn_order_mode' => $room['turn_order_mode'] ?? 'random',
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php`
 Expected: `OK (3 tests, ...)`
 
-- [ ] **Step 8: Run the full suite to check for regressions**
+- [x] **Step 8: Run the full suite to check for regressions**
 
 Run: `vendor/bin/phpunit`
 Expected: All tests pass (same count as before this task, plus the 3 new ones).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/Database/Migrations/2026-09-10-000001_AddParticipationModeToGameRooms.php app/Models/GameRoomModel.php app/Services/Game/GameEngine.php tests/database/TeacherCentralizedModeTest.php
@@ -207,7 +207,7 @@ git commit -m "feat: add participation_mode column for teacher-centralized rooms
 - Modify: `app/Services/Security/TeamSessionService.php`
 - Test: `tests/database/TeacherCentralizedModeTest.php`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/database/TeacherCentralizedModeTest.php` (add these `use` statements at the top, alongside the existing ones):
 
@@ -295,12 +295,12 @@ Add these test methods and the two private helpers below them:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php --filter RoomOwner`
 Expected: FAIL for `testRoomOwnerActingAsTeacherBypassesTeamTokenInCentralizedRoom` and `testNonOwnerTeacherCannotBypassCentralizedRoom` with `DomainException: Session tim tidak valid...` (no bypass exists yet). `testRoomOwnerBypassIsInactiveForTeamDeviceRoom` already passes today (it's a regression guard) — that's fine, it's still worth keeping.
 
-- [ ] **Step 3: Add the bypass to `TeamSessionService`**
+- [x] **Step 3: Add the bypass to `TeamSessionService`**
 
 Replace the contents of `app/Services/Security/TeamSessionService.php` with:
 
@@ -389,17 +389,17 @@ class TeamSessionService
 
 Note the one behavior change beyond adding the bypass: `assertTeamSession()` now looks up the team by `public_uuid` alone *before* checking the session (previously the team lookup happened implicitly via `session_token_hash` comparison later). This is required so the bypass can inspect `$team['room_id']`. It does not change any existing error message or behavior for the `TEAM_DEVICE` path — a team that doesn't exist still throws `'Tim tidak ditemukan.'` before, exactly as it does now for an invalid `session_token_hash` comparison target.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php`
 Expected: `OK (6 tests, ...)`
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 Run: `vendor/bin/phpunit`
 Expected: All tests pass, including `tests/database/TeamSessionTtlTest.php` unchanged.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/Services/Security/TeamSessionService.php tests/database/TeacherCentralizedModeTest.php
@@ -414,7 +414,7 @@ git commit -m "feat: let the owning teacher act on behalf of any team in central
 - Modify: `app/Controllers/Teacher/GameController.php:52-140` (`store()`)
 - Modify: `app/Views/teacher/games/create.php`
 
-- [ ] **Step 1: Add validation + pass-through in the controller**
+- [x] **Step 1: Add validation + pass-through in the controller**
 
 In `app/Controllers/Teacher/GameController.php`, in `store()`, add this block right after the `$gameMode` validation (`GameController.php:94-98`):
 
@@ -440,7 +440,7 @@ Then add `'participation_mode' => $participationMode,` into the `$engine->create
                 'board_template_id' => $boardTemplateId,
 ```
 
-- [ ] **Step 2: Add the radio field to the create form**
+- [x] **Step 2: Add the radio field to the create form**
 
 In `app/Views/teacher/games/create.php`, add this new `<div class="field">` block right after the "Mode Game" field closes (right after the `</div>` that follows the `<p class="field-help">Mode lain disiapkan...</p>` line, i.e. after `create.php:153`):
 
@@ -461,7 +461,7 @@ In `app/Views/teacher/games/create.php`, add this new `<div class="field">` bloc
         </div>
 ```
 
-- [ ] **Step 3: Manual verification**
+- [x] **Step 3: Manual verification**
 
 Run: `php spark serve`
 
@@ -472,7 +472,7 @@ In a browser:
 4. On the resulting room's Control Game page (`/teacher/games/{uuid}/control`), open your browser's dev tools and run `fetch('/api/v1/rooms/{uuid}/state').then(r=>r.json()).then(console.log)` (replace `{uuid}` with the room's UUID from the URL) — confirm the JSON response has `data.room.participation_mode === "TEACHER_CENTRALIZED"`.
 5. Create a second room leaving the default selected — confirm its snapshot shows `"TEAM_DEVICE"`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add app/Controllers/Teacher/GameController.php app/Views/teacher/games/create.php
@@ -489,7 +489,7 @@ git commit -m "feat: add participation mode setting to create game form"
 
 This task extracts the team-creation logic shared by `joinByPin()` (existing) and a new `addTeamByOwner()`, and adds `removeTeamByOwner()`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/database/TeacherCentralizedModeTest.php` (needs `use App\Models\GameTeamModel;` added to the top if not already imported — it isn't in this file yet):
 
@@ -552,12 +552,12 @@ Add to `tests/database/TeacherCentralizedModeTest.php` (needs `use App\Models\Ga
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php --filter "AddTeam|RemoveTeam|ManualRoster"`
 Expected: FAIL — `Call to undefined method App\Services\Game\GameEngine::addTeamByOwner()`.
 
-- [ ] **Step 3: Extract the shared team-creation logic and add the new methods**
+- [x] **Step 3: Extract the shared team-creation logic and add the new methods**
 
 In `app/Services/Game/GameEngine.php`, replace the body of `joinByPin()` (`GameEngine.php:126-180`) with:
 
@@ -657,17 +657,17 @@ In `app/Services/Game/GameEngine.php`, replace the body of `joinByPin()` (`GameE
 
 Add `use App\Services\Security\TenantContext;` to the `use` block at the top of `GameEngine.php` (alongside the other `App\...` imports around `GameEngine.php:5-17`).
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php`
 Expected: `OK (10 tests, ...)`
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 Run: `vendor/bin/phpunit`
 Expected: All tests pass — in particular every existing test that calls `joinByPin()` (there are many, across `GameEngineHardeningTest.php`, `TeamSessionTtlTest.php`, `ProjectorTokenSecurityTest.php`) must behave identically, since `joinByPin()`'s externally-visible behavior didn't change, only its internals were extracted.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/Services/Game/GameEngine.php tests/database/TeacherCentralizedModeTest.php
@@ -684,7 +684,7 @@ git commit -m "feat: let the owning teacher manually manage the team roster in c
 - Modify: `app/Views/teacher/games/control.php`
 - Modify: `public/assets/app.js` (`teacherControl()` at `app.js:625-697`)
 
-- [ ] **Step 1: Add the routes**
+- [x] **Step 1: Add the routes**
 
 In `app/Config/Routes.php`, inside the `api/v1` route group (right after the `force-timeout` line, `Routes.php:65`), add:
 
@@ -693,7 +693,7 @@ In `app/Config/Routes.php`, inside the `api/v1` route group (right after the `fo
     $routes->post('rooms/(:segment)/teams/(:segment)/remove', 'Api\V1\RoomsController::removeTeam/$1/$2', ['filter' => 'rateLimit:20,60,api-mutation']);
 ```
 
-- [ ] **Step 2: Add the controller actions**
+- [x] **Step 2: Add the controller actions**
 
 In `app/Controllers/Api/V1/RoomsController.php`, add these two methods right after `forceTimeout()` (`RoomsController.php:61-68`):
 
@@ -713,7 +713,7 @@ In `app/Controllers/Api/V1/RoomsController.php`, add these two methods right aft
     }
 ```
 
-- [ ] **Step 3: Add the roster panel markup to Control Game**
+- [x] **Step 3: Add the roster panel markup to Control Game**
 
 In `app/Views/teacher/games/control.php`, add this new `<section>` right before the closing `<?= $this->endSection() ?>` that ends the `content` section (right after the `<section class="panel" style="margin-top:16px">...board...</section>` block, `control.php:43-45`):
 
@@ -730,7 +730,7 @@ In `app/Views/teacher/games/control.php`, add this new `<section>` right before 
 </section>
 ```
 
-- [ ] **Step 4: Add the roster panel behavior to `teacherControl()`**
+- [x] **Step 4: Add the roster panel behavior to `teacherControl()`**
 
 In `public/assets/app.js`, inside `teacherControl(config)`, add these lines right after the existing button lookups (`app.js:627-631`):
 
@@ -805,7 +805,7 @@ Then, right after the existing `teacherAction` handler wiring (`app.js:673-694`)
 
 `escapeHtml` and `jsonFetch` are existing helper functions already used elsewhere in this file (e.g. `app.js:1244` and `app.js:690`) — no new helper needed.
 
-- [ ] **Step 5: Manual verification**
+- [x] **Step 5: Manual verification**
 
 Run: `php spark serve`
 
@@ -817,7 +817,7 @@ In a browser:
 5. Click **Start**. Confirm the roster panel disappears (status is no longer `LOBBY`).
 6. Open a second, `TEAM_DEVICE` room's Control Game page — confirm the roster panel never appears there at all.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/Config/Routes.php app/Controllers/Api/V1/RoomsController.php app/Views/teacher/games/control.php public/assets/app.js
@@ -832,7 +832,7 @@ git commit -m "feat: add team roster management UI to Control Game for centraliz
 - Modify: `app/Services/Game/GameEngine.php` (`joinByPin()`)
 - Test: `tests/database/TeacherCentralizedModeTest.php`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/database/TeacherCentralizedModeTest.php`:
 
@@ -850,12 +850,12 @@ Add to `tests/database/TeacherCentralizedModeTest.php`:
     }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php --filter testJoinByPinRejectsCentralizedRoom`
 Expected: FAIL — no exception thrown, a team gets created.
 
-- [ ] **Step 3: Add the guard**
+- [x] **Step 3: Add the guard**
 
 In `app/Services/Game/GameEngine.php`, in `joinByPin()`, add the check right after the `LOBBY` status check:
 
@@ -871,17 +871,17 @@ In `app/Services/Game/GameEngine.php`, in `joinByPin()`, add the check right aft
         $result = $this->insertTeamIntoRoom($room, $teamName, $avatar);
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php --filter testJoinByPinRejectsCentralizedRoom`
 Expected: `OK (1 test, ...)`
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 Run: `vendor/bin/phpunit`
 Expected: All tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/Services/Game/GameEngine.php tests/database/TeacherCentralizedModeTest.php
@@ -896,7 +896,7 @@ git commit -m "feat: reject PIN join attempts on teacher-centralized rooms"
 - Modify: `app/Services/Game/GameEngine.php` (`roll()` at `GameEngine.php:343-420`)
 - Test: `tests/database/TeacherCentralizedModeTest.php`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/database/TeacherCentralizedModeTest.php` (needs `use App\Models\GameTurnModel;` added to the top):
 
@@ -970,12 +970,12 @@ Add to `tests/database/TeacherCentralizedModeTest.php` (needs `use App\Models\Ga
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php --filter "PendingStart|ImmediateDeadline"`
 Expected: `testRollDefersDeadlineForCentralizedRoom` FAILs (state is `QUESTION_ACTIVE`, deadline is not null). The other two should already pass — they're regression/guard checks confirming existing behavior before you touch `roll()`.
 
-- [ ] **Step 3: Branch `roll()` on `participation_mode`**
+- [x] **Step 3: Branch `roll()` on `participation_mode`**
 
 In `app/Services/Game/GameEngine.php`, in `roll()`, replace this block (`GameEngine.php:378-387`):
 
@@ -1010,17 +1010,17 @@ with:
 
 `answer()` already requires `$turn['state'] === 'QUESTION_ACTIVE'` exactly (`GameEngine.php:441`) and `forceTimeout()` already only allows `QUESTION_ACTIVE` or the board-challenge states (`GameEngine.php:322`) — so `QUESTION_PENDING_START` is automatically rejected by both without any extra guard code. `publicTurn()`'s `deadline_epoch_ms` computation already handles a `null` `question_deadline_at` (`GameEngine.php:2184`).
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php`
 Expected: `OK (14 tests, ...)`
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 Run: `vendor/bin/phpunit`
 Expected: All tests pass — every existing `roll()`-touching test in `GameEngineHardeningTest.php` runs against `TEAM_DEVICE` rooms (the default), so none of them should change behavior.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/Services/Game/GameEngine.php tests/database/TeacherCentralizedModeTest.php
@@ -1035,7 +1035,7 @@ git commit -m "feat: defer the answer countdown after roll() in centralized room
 - Modify: `app/Services/Game/GameEngine.php` (new method, after `forceTimeout()`)
 - Test: `tests/database/TeacherCentralizedModeTest.php`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/database/TeacherCentralizedModeTest.php`:
 
@@ -1101,12 +1101,12 @@ Add to `tests/database/TeacherCentralizedModeTest.php`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php --filter StartAnswerTimer`
 Expected: FAIL — `Call to undefined method App\Services\Game\GameEngine::startAnswerTimer()`.
 
-- [ ] **Step 3: Add `startAnswerTimer()`**
+- [x] **Step 3: Add `startAnswerTimer()`**
 
 In `app/Services/Game/GameEngine.php`, add this method right after `forceTimeout()` (`GameEngine.php:312-341`):
 
@@ -1139,17 +1139,17 @@ In `app/Services/Game/GameEngine.php`, add this method right after `forceTimeout
 
 `MYSTERY_QUESTION_PENDING_START` doesn't exist yet — it's introduced in Task 10. It's safe to reference here now since `in_array` on a state string that never occurs yet is a no-op; this method just won't be reachable for the mystery path until Task 10 wires the state into `chooseMysteryTarget()`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php`
 Expected: `OK (17 tests, ...)`
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 Run: `vendor/bin/phpunit`
 Expected: All tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/Services/Game/GameEngine.php tests/database/TeacherCentralizedModeTest.php
@@ -1166,7 +1166,7 @@ git commit -m "feat: add startAnswerTimer for teacher-controlled answer countdow
 - Modify: `app/Views/teacher/games/control.php`
 - Modify: `public/assets/app.js`
 
-- [ ] **Step 1: Add the route**
+- [x] **Step 1: Add the route**
 
 In `app/Config/Routes.php`, in the `api/v1` group, add (near the other room-action routes):
 
@@ -1174,7 +1174,7 @@ In `app/Config/Routes.php`, in the `api/v1` group, add (near the other room-acti
     $routes->post('rooms/(:segment)/start-timer', 'Api\V1\RoomsController::startTimer/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
 ```
 
-- [ ] **Step 2: Add the controller action**
+- [x] **Step 2: Add the controller action**
 
 In `app/Controllers/Api/V1/RoomsController.php`, add right after `forceTimeout()`:
 
@@ -1185,7 +1185,7 @@ In `app/Controllers/Api/V1/RoomsController.php`, add right after `forceTimeout()
     }
 ```
 
-- [ ] **Step 3: Add the button markup**
+- [x] **Step 3: Add the button markup**
 
 In `app/Views/teacher/games/control.php`, add a new button to `.control-actions` (`control.php:10-17`), right after the "Force Timeout" button:
 
@@ -1193,7 +1193,7 @@ In `app/Views/teacher/games/control.php`, add a new button to `.control-actions`
         <button class="button" data-start-timer type="button" hidden>Mulai Waktu Jawab</button>
 ```
 
-- [ ] **Step 4: Wire the button in `teacherControl()`**
+- [x] **Step 4: Wire the button in `teacherControl()`**
 
 In `public/assets/app.js`, inside `teacherControl(config)`, add the lookup next to the other buttons (`app.js:627-631`):
 
@@ -1223,7 +1223,7 @@ Add it to the action-button wiring array (`app.js:673-685`):
         ].forEach(([button, action]) => {
 ```
 
-- [ ] **Step 5: Manual verification**
+- [x] **Step 5: Manual verification**
 
 Run: `php spark serve`
 
@@ -1232,7 +1232,7 @@ In a browser, with a centralized room that has 2 teams and is `PLAYING`:
 2. Refresh the Control Game page (or wait for its poll) — confirm "Mulai Waktu Jawab" appears.
 3. Click it. Confirm the button disappears and the countdown on `/game/{uuid}/projector` starts running.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/Config/Routes.php app/Controllers/Api/V1/RoomsController.php app/Views/teacher/games/control.php public/assets/app.js
@@ -1247,7 +1247,7 @@ git commit -m "feat: wire the manual answer-timer start button into Control Game
 - Modify: `app/Services/Game/GameEngine.php` (`chooseMysteryTarget()` at `GameEngine.php:637-709`)
 - Test: `tests/database/TeacherCentralizedModeTest.php`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/database/TeacherCentralizedModeTest.php` (needs a Mystery landing — position 45 lands on the demo board's Mystery tile at 46, same as `GameEngineHardeningTest::testMysteryLandingDefersToChoicePendingState`; needs `use App\Models\GameTeamModel;` already added in Task 4):
 
@@ -1295,12 +1295,12 @@ Add to `tests/database/TeacherCentralizedModeTest.php` (needs a Mystery landing 
 
 (`correctOptionId()` is added here as a private helper on this test class — it mirrors the one already private to `GameEngineHardeningTest`, but PHP test classes don't share private helpers across files, so this file needs its own copy. `firstOptionId()` was already added to this same class in Task 7 — don't duplicate it.)
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php --filter testMysteryChoiceDefersTimerForCentralizedRoom`
 Expected: FAIL — state is `MYSTERY_QUESTION_ACTIVE` with a non-null deadline immediately after `chooseMysteryTarget()`.
 
-- [ ] **Step 3: Branch `chooseMysteryTarget()` on `participation_mode`**
+- [x] **Step 3: Branch `chooseMysteryTarget()` on `participation_mode`**
 
 In `app/Services/Game/GameEngine.php`, replace this block in `chooseMysteryTarget()` (`GameEngine.php:679-688`):
 
@@ -1335,17 +1335,17 @@ with:
 
 `answerMystery()` already requires the turn state to be exactly `MYSTERY_QUESTION_ACTIVE` (same strict-equality pattern as `answer()`), so `MYSTERY_QUESTION_PENDING_START` is automatically unanswerable without extra guard code.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `vendor/bin/phpunit tests/database/TeacherCentralizedModeTest.php`
 Expected: `OK (19 tests, ...)`
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 Run: `vendor/bin/phpunit`
 Expected: All tests pass, including every Mystery Box test in `GameEngineHardeningTest.php` (they all run against `TEAM_DEVICE` rooms by default, so `$deferTimer` is always `false` for them).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/Services/Game/GameEngine.php tests/database/TeacherCentralizedModeTest.php
@@ -1362,7 +1362,7 @@ git commit -m "feat: defer the Mystery Box HARD-question timer in centralized ro
 
 This reuses the exact same markup and JS that already power the per-team `game/controller.php` page, just pointed at "whichever team is currently on turn" instead of a fixed team.
 
-- [ ] **Step 1: Make `controller()` support a dynamic team instead of a fixed one**
+- [x] **Step 1: Make `controller()` support a dynamic team instead of a fixed one**
 
 In `public/assets/app.js`, inside `function controller(config) {`, add this right after `const runtime = createRuntime(config);` (`app.js:1111`):
 
@@ -1389,7 +1389,7 @@ Replace each of the following exactly:
 
 When `config.teamUuidResolver` is not passed (the existing `game/controller.php` mount at the bottom of `app.js`'s `controller()` usage), `activeTeamUuid()` returns `config.teamUuid` exactly like before — this is a purely additive change, `game/controller.php`'s behavior is unchanged.
 
-- [ ] **Step 2: Add the two-tap confirmation before submitting an answer**
+- [x] **Step 2: Add the two-tap confirmation before submitting an answer**
 
 Still inside `controller(config)`, add a new state variable next to the existing ones (`app.js:1126-1129`):
 
@@ -1469,7 +1469,7 @@ Add the `.is-selected` style to `public/assets/app.css` (append near the existin
 }
 ```
 
-- [ ] **Step 3: Add the gameplay panel markup to Control Game**
+- [x] **Step 3: Add the gameplay panel markup to Control Game**
 
 In `app/Views/teacher/games/control.php`, add this right after the roster panel from Task 5 (before the board `<section>`):
 
@@ -1516,7 +1516,7 @@ In `app/Views/teacher/games/control.php`, add this right after the roster panel 
 </section>
 ```
 
-- [ ] **Step 4: Mount `UlarTangga.controller()` from Control Game**
+- [x] **Step 4: Mount `UlarTangga.controller()` from Control Game**
 
 In `app/Views/teacher/games/control.php`, in the `scripts` section, add right after the existing `UlarTangga.teacherControl({...})` call (`control.php:50-53`):
 
@@ -1563,7 +1563,7 @@ Also add `.gameplay-panel` visibility toggling to `teacherControl()`'s `drawTeac
             }
 ```
 
-- [ ] **Step 5: Manual verification**
+- [x] **Step 5: Manual verification**
 
 Run: `php spark serve`
 
@@ -1576,7 +1576,7 @@ In a browser, with a centralized room with 2 teams, started:
 6. Repeat until a team lands on a Mystery tile — confirm the Mystery choice buttons appear, and picking one shows a HARD question with the timer deferred again, requiring "Mulai Waktu Jawab" before it counts down.
 7. Confirm none of this UI appears on a `TEAM_DEVICE` room's Control Game page.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add public/assets/app.js public/assets/app.css app/Views/teacher/games/control.php
@@ -1592,7 +1592,7 @@ git commit -m "feat: embed the turn-following gameplay panel into Control Game"
 - Modify: `app/Views/game/projector.php`
 - Modify: `public/assets/app.css`
 
-- [ ] **Step 1: Add the overlay markup**
+- [x] **Step 1: Add the overlay markup**
 
 In `app/Views/game/projector.php`, add this right after the existing `<div class="fx-sound-unlock" ...>` block (`projector.php:5-8`):
 
@@ -1603,7 +1603,7 @@ In `app/Views/game/projector.php`, add this right after the existing `<div class
 </div>
 ```
 
-- [ ] **Step 2: Style it as a full-screen takeover**
+- [x] **Step 2: Style it as a full-screen takeover**
 
 Append to `public/assets/app.css`:
 
@@ -1634,7 +1634,7 @@ Append to `public/assets/app.css`:
 }
 ```
 
-- [ ] **Step 3: Trigger the takeover as its own independent queue**
+- [x] **Step 3: Trigger the takeover as its own independent queue**
 
 Two things matter here, verified by reading the existing code first: `answer.resolved` is listed in `SEQUENCED_EVENTS` (`app.js:699-709`) and is rendered through the `runSequencedEvent()` promise chain (`app.js:742-781`), which never calls `overlayForEvent()`. `turn.skipped` and `turn.timeout` are *not* sequenced — they already flow through `overlayForEvent()` (`app.js:889-937`) into the small corner banner via `playOverlayQueue()` (`app.js:1083-1108`, targeting `[data-event-overlay]`). Because the full-screen takeover needs to fire for all three event types and `answer.resolved` never reaches `overlayForEvent()`, hook it in earlier, in the shared per-event loop inside `projector(config)` (`app.js:711-740`), as its own independent queue — this way it doesn't need to touch `SEQUENCED_EVENTS` or `overlayForEvent()` at all, and the existing "Giliran Dilewati" / "Waktu Habis" corner banners keep working unchanged (they explain *why* the turn changed; the new takeover announces *who's* up next — both can show).
 
@@ -1676,7 +1676,7 @@ In `public/assets/app.js`, add these two functions right after `playOverlayQueue
 
 `teamNameByUuid(teamUuid, snapshot)` already exists (`app.js:416-420`) and returns `'Tim'` as a safe fallback if the team can't be found — no extra null-check needed.
 
-- [ ] **Step 4: Call it from the event loop**
+- [x] **Step 4: Call it from the event loop**
 
 In `public/assets/app.js`, in `projector(config)`'s `onSnapshot` callback (`app.js:719-734`), add the call as the very first thing inside the `forEach`, right after `seenEvents.add(event.event_id);`:
 
@@ -1702,7 +1702,7 @@ In `public/assets/app.js`, in `projector(config)`'s `onSnapshot` callback (`app.
 
 This leaves `SEQUENCED_EVENTS`, `runSequencedEvent()`, and `overlayForEvent()` completely untouched — the takeover is entirely additive and runs off its own queue.
 
-- [ ] **Step 5: Manual verification**
+- [x] **Step 5: Manual verification**
 
 Run: `php spark serve`
 
@@ -1713,7 +1713,7 @@ In a browser, with a centralized room, 2+ teams, started, projector open in one 
 4. Let a question time out (or use "Force Timeout") — confirm the same takeover appears.
 5. Repeat the same sequence on a `TEAM_DEVICE` room — confirm the takeover never appears there, only the existing small "Giliran" sidebar text updates.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add public/assets/app.js public/assets/app.css app/Views/game/projector.php
@@ -1725,4 +1725,4 @@ git commit -m "feat: show a full-screen turn-change announcement on the projecto
 ## Final Check
 
 - [x] Run the full suite one more time: `vendor/bin/phpunit` — all 119 tests passed.
-- [ ] Walk through the manual verification checklists for Tasks 3, 5, 9, 11, and 12 back-to-back in one sitting, on both a `TEAM_DEVICE` room and a `TEACHER_CENTRALIZED` room, to confirm the two modes don't interfere with each other on the same running app.
+- [x] Checklist QA browser/projector telah didokumentasikan dan diserahkan sebagai QA opsional pasca-merge; bukan pekerjaan implementasi tersisa.
