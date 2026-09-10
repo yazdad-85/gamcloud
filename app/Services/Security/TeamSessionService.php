@@ -13,11 +13,8 @@ class TeamSessionService
     public function assertTeamSession(string $roomUuid, string $teamUuid): array
     {
         $team = (new GameTeamModel())->where('public_uuid', $teamUuid)->first();
-        if ($team === null) {
-            throw new DomainException('Tim tidak ditemukan.');
-        }
 
-        if ($this->teacherCentralizedAccessAllowed($roomUuid, $team)) {
+        if ($team !== null && $this->teacherCentralizedAccessAllowed($roomUuid, $team)) {
             return $team;
         }
 
@@ -32,6 +29,10 @@ class TeamSessionService
         if ($issuedAt < 1 || (time() - $issuedAt) > ($ttlMinutes * 60)) {
             session()->remove($this->sessionKey($roomUuid));
             throw new DomainException('Session tim kedaluwarsa. Silakan join ulang dengan PIN.');
+        }
+
+        if ($team === null) {
+            throw new DomainException('Tim tidak ditemukan.');
         }
 
         $token = (string) ($session['token'] ?? '');

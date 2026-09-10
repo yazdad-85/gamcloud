@@ -85,6 +85,18 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
         (new TeamSessionService())->assertTeamSession($room['uuid'], $team['public_uuid']);
     }
 
+    public function testNonexistentTeamUuidWithNoSessionStillReportsInvalidSessionForTeamDeviceRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Nonexistent Team Test', [
+            'participation_mode' => 'TEAM_DEVICE',
+        ])['room'];
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Session tim tidak valid. Silakan join ulang dengan PIN.');
+        (new TeamSessionService())->assertTeamSession($room['uuid'], Uuid::v4());
+    }
+
     public function testNonOwnerTeacherCannotBypassCentralizedRoom(): void
     {
         $engine = new GameEngine();
