@@ -433,6 +433,102 @@ class GameEngine
         return $this->snapshot($roomUuid);
     }
 
+    public function selectDifficultyTier(string $roomUuid, string $teamUuid, string $tier, ?string $idempotencyKey = null): array
+    {
+        $room = $this->roomByUuid($roomUuid);
+        $this->assertRoomNotExpired($room, 'Room sudah kedaluwarsa. Permainan tidak bisa dilanjutkan.');
+        if (($room['game_mode'] ?? 'SNAKES_LADDERS') !== 'QUIZ_RACE') {
+            throw new DomainException('Aksi ini hanya berlaku untuk mode Quiz Race.');
+        }
+
+        $team = $this->teamByUuid($teamUuid, (int) $room['id']);
+        $scope = 'select-tier:' . $room['public_uuid'] . ':' . $team['public_uuid'];
+        if ($existing = $this->idempotentResponse($scope, $idempotencyKey)) {
+            return $existing;
+        }
+
+        if ($room['status'] !== 'PLAYING') {
+            throw new DomainException('Game belum dalam status PLAYING.');
+        }
+        if ((int) $room['current_team_id'] !== (int) $team['id']) {
+            throw new DomainException('Belum giliran tim ini.');
+        }
+
+        $turn = $this->activeTurn((int) $room['id']);
+        if ($turn === null || $turn['state'] !== 'ROLL_READY') {
+            throw new DomainException('Tingkat soal hanya bisa dipilih saat ROLL_READY.');
+        }
+
+        $tier = strtoupper($tier);
+        if (! in_array($tier, ['EASY', 'MEDIUM', 'HARD'], true)) {
+            throw new DomainException('Tingkat soal tidak valid.');
+        }
+
+        $activeEffects = $this->teamEffects($team);
+        if (! empty($activeEffects['oil_spill_lock'])) {
+            if ($tier !== 'EASY') {
+                throw new DomainException('Tim terkena Oil Spill — giliran ini hanya bisa memilih tingkat EASY.');
+            }
+            $activeEffects['oil_spill_lock'] = false;
+            (new GameTeamModel())->update($team['id'], [
+                'active_effects_json' => json_encode($activeEffects, JSON_UNESCAPED_SLASHES),
+            ]);
+        }
+
+        $selectionRules = $this->questionSelectionRules($room['question_selection_json'] ?? [], (int) $room['max_position']);
+        $poolRecycled = false;
+        $question = $this->selectQuestion(
+            (int) $room['teacher_id'],
+            $tier,
+            $selectionRules['topic_ids'],
+            (int) $room['id'],
+            $poolRecycled
+        );
+
+        $now = date('Y-m-d H:i:s');
+        $deferTimer = ($room['participation_mode'] ?? 'TEAM_DEVICE') === 'TEACHER_CENTRALIZED';
+        $deadline = $deferTimer ? null : date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
+
+        (new GameTurnModel())->update($turn['id'], [
+            'state' => $deferTimer ? 'QUESTION_PENDING_START' : 'QUESTION_ACTIVE',
+            'selected_tier' => $tier,
+            'question_id' => $question['id'],
+            'question_started_at' => $now,
+            'question_deadline_at' => $deadline,
+        ]);
+        $this->bumpRoom($room['id']);
+        $room = $this->roomById((int) $room['id']);
+
+        if ($poolRecycled) {
+            $this->recordEvent($room, 'question.pool_recycled', [
+                'room_uuid' => $room['public_uuid'],
+                'difficulty' => $tier,
+                'topic_ids' => $selectionRules['topic_ids'],
+                'reason' => 'exhausted',
+            ]);
+        }
+        $this->recordEvent($room, 'tier.selected', [
+            'team_uuid' => $team['public_uuid'],
+            'tier' => $tier,
+        ]);
+        $this->recordEvent($room, 'question.started', [
+            'team_uuid' => $team['public_uuid'],
+            'turn_uuid' => $turn['public_uuid'],
+            'question' => $this->publicQuestion($question),
+            'selection' => [
+                'strategy' => 'team_choice',
+                'requested_difficulty' => $tier,
+                'selected_difficulty' => $question['difficulty'],
+            ],
+            'deadline_at' => $deadline,
+        ]);
+
+        $response = $this->snapshot($room['public_uuid']);
+        $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+        return $response;
+    }
+
     public function roll(string $roomUuid, string $teamUuid, ?string $idempotencyKey = null): array
     {
         $room = $this->roomByUuid($roomUuid);
@@ -2188,6 +2284,7 @@ class GameEngine
 
         return [
             'safe_shield' => max(0, min(3, (int) ($effects['safe_shield'] ?? 0))),
+            'oil_spill_lock' => (bool) ($effects['oil_spill_lock'] ?? false),
         ];
     }
 

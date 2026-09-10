@@ -22,7 +22,7 @@ final class QuizRaceModeTest extends CIUnitTestCase
     use FeatureTestTrait;
     use AuthenticationTesting;
 
-    protected $namespace = 'App';
+    protected $namespace = ['App', 'CodeIgniter\Shield', 'CodeIgniter\Settings'];
     protected $seed = App\Database\Seeds\DemoGameSeeder::class;
 
     public function testQuizRaceIsPlayableAndUsesRaceRenderer(): void
@@ -63,6 +63,58 @@ final class QuizRaceModeTest extends CIUnitTestCase
             'game_mode' => 'QUIZ_RACE',
             'participation_mode' => 'TEAM_DEVICE',
         ]);
+    }
+
+    public function testSelectDifficultyTierRecordsChosenTierAndDrawsQuestion(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Select Tier Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+            'track_length' => 18,
+            'lap_count' => 3,
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Cepat')['team'];
+        (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Lain');
+        $engine->start($room['uuid']);
+
+        $snapshot = $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'HARD');
+
+        $this->assertSame('QUESTION_PENDING_START', $snapshot['current_turn']['state']);
+        $this->assertNotNull($snapshot['current_turn']['question']);
+        $this->assertSame('HARD', $snapshot['current_turn']['question']['difficulty']);
+        $turn = $this->latestTurn($room['uuid']);
+        $this->assertSame('HARD', $turn['selected_tier']);
+    }
+
+    public function testSelectDifficultyTierRejectsInvalidTier(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Select Tier Invalid Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+
+        $this->expectException(DomainException::class);
+        $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'IMPOSSIBLE');
+    }
+
+    public function testSelectDifficultyTierRejectsForNonQuizRaceRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Non Race Reject Test')['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Biasa')['team'];
+        $engine->start($room['uuid']);
+
+        $this->expectException(DomainException::class);
+        $engine->selectDifficultyTier($room['uuid'], $team['public_uuid'], 'EASY');
     }
 
     private function actingAsTeacherOwner(int $teacherId): void
