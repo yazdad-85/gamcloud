@@ -752,10 +752,11 @@ class GameEngine
             $poolRecycled
         );
         $now = date('Y-m-d H:i:s');
-        $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
+        $deferTimer = ($room['participation_mode'] ?? 'TEAM_DEVICE') === 'TEACHER_CENTRALIZED';
+        $deadline = $deferTimer ? null : date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
 
         (new GameTurnModel())->update($turn['id'], [
-            'state' => 'MYSTERY_QUESTION_ACTIVE',
+            'state' => $deferTimer ? 'MYSTERY_QUESTION_PENDING_START' : 'MYSTERY_QUESTION_ACTIVE',
             'mystery_target_team_id' => $targetTeamId,
             'question_id' => $question['id'],
             'question_started_at' => $now,

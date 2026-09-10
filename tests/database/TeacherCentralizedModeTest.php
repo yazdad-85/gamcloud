@@ -305,6 +305,42 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
         $engine->startAnswerTimer($room['uuid']);
     }
 
+    public function testMysteryChoiceDefersTimerForCentralizedRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Mystery Pending Start Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+            'scoring' => [
+                'time_bonus' => false,
+                'streak_bonus' => false,
+                'near_finish_bonus' => false,
+                'wrong_penalty' => false,
+                'timeout_penalty' => false,
+            ],
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = $engine->addTeamByOwner($room['uuid'], 'Tim Misteri')['team'];
+        $engine->start($room['uuid']);
+
+        (new GameTeamModel())->update($team['id'], ['position' => 45]);
+        $engine->roll($room['uuid'], $team['public_uuid']);
+        $engine->startAnswerTimer($room['uuid']);
+        $turn = (new GameTurnModel())->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
+        $optionId = $this->correctOptionId((int) $turn['question_id']);
+        (new GameTurnModel())->update($turn['id'], ['dice_value' => 1]);
+        $engine->answer($room['uuid'], $team['public_uuid'], $optionId);
+
+        $snapshot = $engine->chooseMysteryTarget($room['uuid'], $team['public_uuid'], 'SELF');
+
+        $this->assertSame('MYSTERY_QUESTION_PENDING_START', $snapshot['current_turn']['state']);
+        $this->assertNull($snapshot['current_turn']['deadline_at']);
+
+        $resumed = $engine->startAnswerTimer($room['uuid']);
+        $this->assertSame('MYSTERY_QUESTION_ACTIVE', $resumed['current_turn']['state']);
+        $this->assertNotNull($resumed['current_turn']['deadline_at']);
+    }
+
     private function roomId(string $roomUuid): int
     {
         $room = (new GameRoomModel())->where('public_uuid', $roomUuid)->first();
@@ -315,6 +351,16 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
     private function firstOptionId(int $questionId): int
     {
         $option = (new \App\Models\QuestionOptionModel())->where('question_id', $questionId)->first();
+
+        return (int) $option['id'];
+    }
+
+    private function correctOptionId(int $questionId): int
+    {
+        $option = (new \App\Models\QuestionOptionModel())
+            ->where('question_id', $questionId)
+            ->where('is_correct', 1)
+            ->first();
 
         return (int) $option['id'];
     }
