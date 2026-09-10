@@ -99,6 +99,7 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>
+<script src="/assets/game-fx.js?v=<?= esc((string) @filemtime(FCPATH . 'assets/game-fx.js')) ?>"></script>
 <script>
 UlarTangga.teacherControl({
     roomUuid: <?= json_encode($room['uuid'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
