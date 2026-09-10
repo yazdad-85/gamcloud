@@ -67,6 +67,11 @@ class RoomsController extends BaseController
         });
     }
 
+    public function startTimer(string $roomUuid)
+    {
+        return $this->respond(fn () => (new GameEngine())->startAnswerTimer($roomUuid));
+    }
+
     public function addTeam(string $roomUuid)
     {
         $payload = $this->request->getJSON(true) ?: $this->request->getPost();

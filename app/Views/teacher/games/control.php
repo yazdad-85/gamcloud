@@ -13,6 +13,7 @@
         <button class="button secondary" data-resume type="button">Resume</button>
         <button class="button secondary" data-skip-turn type="button">Skip Turn</button>
         <button class="button danger" data-force-timeout type="button">Force Timeout</button>
+        <button class="button" data-start-timer type="button" hidden>Mulai Waktu Jawab</button>
         <a class="button secondary" target="_blank" href="/game/<?= esc($room['uuid']) ?>/projector?t=<?= esc((string) ($room['projector_token'] ?? '')) ?>">Projector</a>
     </div>
 </div>

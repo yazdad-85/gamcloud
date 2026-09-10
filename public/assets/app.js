@@ -629,6 +629,7 @@
         const resumeButton = document.querySelector('[data-resume]');
         const skipTurnButton = document.querySelector('[data-skip-turn]');
         const forceTimeoutButton = document.querySelector('[data-force-timeout]');
+        const startTimerButton = document.querySelector('[data-start-timer]');
         const rosterPanel = document.querySelector('[data-roster-panel]');
         const rosterAddForm = document.querySelector('[data-roster-add-form]');
         const rosterList = document.querySelector('[data-roster-list]');
@@ -658,6 +659,11 @@
             }
             if (forceTimeoutButton) {
                 forceTimeoutButton.disabled = !hasActiveQuestion;
+            }
+            if (startTimerButton) {
+                const turnPending = turn && (turn.state === 'QUESTION_PENDING_START' || turn.state === 'MYSTERY_QUESTION_PENDING_START');
+                startTimerButton.hidden = !turnPending;
+                startTimerButton.disabled = !turnPending;
             }
             if (rosterPanel) {
                 const isCentralized = snapshot.room.participation_mode === 'TEACHER_CENTRALIZED';
@@ -689,6 +695,7 @@
             [resumeButton, 'resume'],
             [skipTurnButton, 'skip-turn'],
             [forceTimeoutButton, 'force-timeout'],
+            [startTimerButton, 'start-timer'],
         ].forEach(([button, action]) => {
             if (!button) {
                 return;

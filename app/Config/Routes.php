@@ -64,6 +64,7 @@ $routes->group('api/v1', static function ($routes): void {
     $routes->post('rooms/(:segment)/resume', 'Api\V1\RoomsController::resume/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
     $routes->post('rooms/(:segment)/skip-turn', 'Api\V1\RoomsController::skipTurn/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
     $routes->post('rooms/(:segment)/force-timeout', 'Api\V1\RoomsController::forceTimeout/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
+    $routes->post('rooms/(:segment)/start-timer', 'Api\V1\RoomsController::startTimer/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
     $routes->post('rooms/(:segment)/teams', 'Api\V1\RoomsController::addTeam/$1', ['filter' => 'rateLimit:20,60,api-mutation']);
     $routes->post('rooms/(:segment)/teams/(:segment)/remove', 'Api\V1\RoomsController::removeTeam/$1/$2', ['filter' => 'rateLimit:20,60,api-mutation']);
     $routes->post('rooms/(:segment)/roll', 'Api\V1\RoomsController::roll/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
