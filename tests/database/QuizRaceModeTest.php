@@ -46,11 +46,25 @@ final class QuizRaceModeTest extends CIUnitTestCase
         ]);
 
         $this->assertSame('QUIZ_RACE', $snapshot['room']['game_mode']);
+        $this->assertSame('Quiz Race Track Test', $snapshot['room']['display_title']);
+        $this->assertSame('Quiz Race', $snapshot['room']['mode_label']);
         $this->assertSame(18, $snapshot['room']['max_position']);
         $this->assertSame(3, $snapshot['room']['lap_count']);
         $this->assertSame('clamp_finish', $snapshot['room']['finish_rule']);
         $this->assertSame([], $snapshot['board']['ladders']);
         $this->assertSame([], $snapshot['board']['snakes']);
+    }
+
+    public function testQuizRaceSnapshotNormalizesOldDefaultUlarTanggaTitle(): void
+    {
+        $engine = new GameEngine();
+        $snapshot = $engine->createRoom(1, 'Game Ular Tangga 10/09 23:27', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+        ]);
+
+        $this->assertSame('Game Ular Tangga 10/09 23:27', $snapshot['room']['title']);
+        $this->assertSame('Quiz Race 10/09 23:27', $snapshot['room']['display_title']);
     }
 
     public function testCreateRoomRejectsQuizRaceWithTeamDeviceParticipation(): void

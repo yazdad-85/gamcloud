@@ -24,8 +24,8 @@
         <tbody>
         <?php foreach ($rooms as $room): ?>
             <tr>
-                <td><?= esc($room['title']) ?></td>
-                <td><?= esc(($room['game_mode'] ?? 'SNAKES_LADDERS') === 'SNAKES_LADDERS' ? 'Ular Tangga Kuis' : $room['game_mode']) ?></td>
+                <td><?= esc(\App\Services\Game\GameRoomPresenter::displayTitle($room)) ?></td>
+                <td><?= esc(\App\Services\Game\GameRoomPresenter::modeLabel($room['game_mode'] ?? 'SNAKES_LADDERS')) ?></td>
                 <td><strong><?= esc($room['pin']) ?></strong></td>
                 <td><span class="badge <?= strtolower(esc($room['status'])) ?>"><?= esc($room['status']) ?></span></td>
                 <td><?= esc((string) $room['state_version']) ?></td>

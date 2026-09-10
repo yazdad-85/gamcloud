@@ -4,7 +4,7 @@
 <?php $room = $snapshot['room']; ?>
 <section class="controller-wrap">
     <div class="panel">
-        <p class="muted"><?= esc($room['title']) ?></p>
+        <p class="muted"><?= esc($room['display_title'] ?? $room['title']) ?></p>
         <div class="team-identity">
             <span class="team-avatar-badge" data-team-avatar><span data-team-avatar-initials></span></span>
             <div>

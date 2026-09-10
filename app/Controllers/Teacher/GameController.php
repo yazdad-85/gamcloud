@@ -7,6 +7,7 @@ use App\Models\BoardTemplateModel;
 use App\Models\GameRoomModel;
 use App\Models\TeacherModel;
 use App\Services\Game\GameEngine;
+use App\Services\Game\GameRoomPresenter;
 use App\Services\Game\Modes\GameModeCatalog;
 use App\Services\Security\TenantContext;
 use DomainException;
@@ -53,9 +54,6 @@ class GameController extends BaseController
     public function store()
     {
         $title = trim((string) $this->request->getPost('title'));
-        if ($title === '') {
-            $title = 'Game Ular Tangga ' . date('d/m H:i');
-        }
 
         $tenant = new TenantContext();
         $teacherId = $tenant->isSuperadmin()
@@ -96,6 +94,9 @@ class GameController extends BaseController
         $gameMode = strtoupper((string) $this->request->getPost('game_mode'));
         if (! in_array($gameMode, $modeCatalog->playableKeys(), true)) {
             $gameMode = 'SNAKES_LADDERS';
+        }
+        if ($title === '') {
+            $title = GameRoomPresenter::defaultTitle($gameMode);
         }
 
         $participationMode = strtoupper((string) $this->request->getPost('participation_mode'));

@@ -22,8 +22,8 @@
     </section>
     <aside class="grid">
         <div class="panel">
-            <h1 class="page-title"><?= esc($room['title']) ?></h1>
-            <p>Mode <strong><?= esc($snapshot['mode_state']['label'] ?? 'Ular Tangga Kuis') ?></strong></p>
+            <h1 class="page-title"><?= esc($room['display_title'] ?? $room['title']) ?></h1>
+            <p>Mode <strong><?= esc($room['mode_label'] ?? $snapshot['mode_state']['label'] ?? 'Ular Tangga Kuis') ?></strong></p>
             <p>PIN <strong><?= esc($room['pin']) ?></strong></p>
             <p>Status <strong data-room-status><?= esc($room['status']) ?></strong></p>
             <p>Giliran <strong data-current-team>-</strong></p>

@@ -129,7 +129,7 @@
                 </label>
             </div>
             <p class="field-help">Zona difficulty: 30% awal EASY, 40% tengah MEDIUM, dan 30% akhir HARD. Jika stok zona kosong, game fallback ke soal published lain dalam topik terpilih.</p>
-            <p class="field-help">Soal muncul di setiap giliran lempar dadu, disesuaikan dengan kotak yang dituju dadu. Kotak BONUS/TRAP/SAFE/MYSTERY adalah efek tambahan yang berlaku setelah jawaban benar, bukan syarat munculnya soal.</p>
+            <p class="field-help" data-mode-question-help>Soal muncul di setiap giliran lempar dadu, disesuaikan dengan kotak yang dituju dadu. Kotak BONUS/TRAP/SAFE/MYSTERY adalah efek tambahan yang berlaku setelah jawaban benar, bukan syarat munculnya soal.</p>
         </div>
         <div class="field">
             <label>Mode Game</label>
@@ -149,7 +149,7 @@
                     </label>
                 <?php endforeach ?>
             </div>
-            <p class="field-help">Mode lain disiapkan sebagai fondasi platform, tetapi room aktif saat ini tetap memakai ular tangga kuis.</p>
+            <p class="field-help" data-mode-summary-help>Ular Tangga Kuis dan Quiz Race sudah siap dimainkan. Mode lain masih disiapkan sebagai fondasi platform.</p>
         </div>
         <div class="field">
             <label>Mode Partisipasi Tim</label>
@@ -163,7 +163,7 @@
                     <span>Tanpa Device (Terpusat)</span>
                 </label>
             </div>
-            <p class="field-help">Tanpa Device: tidak ada join PIN, guru mengoperasikan dadu &amp; jawaban dari halaman Control Game (1 laptop + projector). Cocok untuk sekolah yang melarang HP siswa.</p>
+            <p class="field-help" data-participation-help>Tanpa Device: tidak ada join PIN, guru mengoperasikan dadu &amp; jawaban dari halaman Control Game (1 laptop + projector). Cocok untuk sekolah yang melarang HP siswa.</p>
         </div>
         <div class="field" data-snakes-only>
             <label>Tema Papan</label>
@@ -422,6 +422,8 @@
     const centralizedRadio = document.querySelector('input[name="participation_mode"][value="TEACHER_CENTRALIZED"]');
     const trackLengthInput = document.querySelector('#track_length');
     const raceBankNote = document.querySelector('[data-race-bank-note]');
+    const modeQuestionHelp = document.querySelector('[data-mode-question-help]');
+    const participationHelp = document.querySelector('[data-participation-help]');
 
     function currentGameMode() {
         const checked = document.querySelector('input[name="game_mode"]:checked');
@@ -453,6 +455,16 @@
         const isRace = currentGameMode() === 'QUIZ_RACE';
         raceOnlyFields.forEach((field) => field.classList.toggle('hidden', !isRace));
         snakesOnlyFields.forEach((field) => field.classList.toggle('hidden', isRace));
+        if (modeQuestionHelp) {
+            modeQuestionHelp.textContent = isRace
+                ? 'Quiz Race tidak memakai dadu. Tim memilih EASY, MEDIUM, atau HARD; pilihan itu menentukan jarak maju jika jawaban benar. Boost/Oil Spill berlaku setelah posisi baru dihitung.'
+                : 'Soal muncul di setiap giliran lempar dadu, disesuaikan dengan kotak yang dituju dadu. Kotak BONUS/TRAP/SAFE/MYSTERY adalah efek tambahan yang berlaku setelah jawaban benar, bukan syarat munculnya soal.';
+        }
+        if (participationHelp) {
+            participationHelp.textContent = isRace
+                ? 'Quiz Race saat ini memakai mode terpusat: guru memilih tingkat soal dan jawaban dari halaman Control Game.'
+                : 'Tanpa Device: tidak ada join PIN, guru mengoperasikan dadu & jawaban dari halaman Control Game (1 laptop + projector). Cocok untuk sekolah yang melarang HP siswa.';
+        }
 
         if (nearFinishCheckbox) {
             if (isRace) {

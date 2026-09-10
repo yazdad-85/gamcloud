@@ -19,7 +19,7 @@ $winner = $report['winner'];
 </head>
 <body>
     <h1>Laporan Analisis Soal</h1>
-    <p class="muted"><?= esc($room['title']) ?> · PIN <?= esc($room['pin']) ?> · <?= esc(date('Y-m-d H:i')) ?></p>
+    <p class="muted"><?= esc(\App\Services\Game\GameRoomPresenter::displayTitle($room)) ?> · PIN <?= esc($room['pin']) ?> · <?= esc(date('Y-m-d H:i')) ?></p>
 
     <div class="box">
         <?php if ($winner): ?>

@@ -2342,16 +2342,19 @@ class GameEngine
 
     private function publicRoom(array $room, bool $includePin = false, bool $forOwner = false): array
     {
+        $gameMode = $room['game_mode'] ?? 'SNAKES_LADDERS';
         $payload = [
             'uuid' => $room['public_uuid'],
             'title' => $room['title'],
+            'display_title' => GameRoomPresenter::displayTitle($room),
             'status' => $room['status'],
             'state_version' => (int) $room['state_version'],
             'current_team_uuid' => $this->currentTeamUuid($room),
             'question_time_seconds' => (int) $room['question_time_seconds'],
             'max_position' => (int) $room['max_position'],
             'lap_count' => (int) ($room['lap_count'] ?? 1),
-            'game_mode' => $room['game_mode'] ?? 'SNAKES_LADDERS',
+            'game_mode' => $gameMode,
+            'mode_label' => GameRoomPresenter::modeLabel($gameMode),
             'participation_mode' => $room['participation_mode'] ?? 'TEAM_DEVICE',
             'turn_order_mode' => $room['turn_order_mode'] ?? 'random',
             'finish_rule' => $room['finish_rule'] ?? 'clamp_finish',

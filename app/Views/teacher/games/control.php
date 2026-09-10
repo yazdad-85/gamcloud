@@ -5,7 +5,7 @@
 <div class="topbar">
     <div>
         <h1 class="page-title">Control Game</h1>
-        <p class="muted"><?= esc($room['title']) ?> / PIN <strong><?= esc($room['pin']) ?></strong></p>
+        <p class="muted"><?= esc($room['display_title'] ?? $room['title']) ?> / PIN <strong><?= esc($room['pin']) ?></strong></p>
     </div>
     <div class="control-actions">
         <button class="button" data-start <?= $room['status'] !== 'LOBBY' ? 'disabled' : '' ?>>Start</button>
@@ -26,7 +26,7 @@
         <p>Status: <strong data-room-status><?= esc($room['status']) ?></strong></p>
         <p>State version: <strong data-state-version><?= esc((string) $room['state_version']) ?></strong></p>
         <p>Giliran: <strong data-current-team>-</strong></p>
-        <p>Mode game: <strong><?= esc($snapshot['mode_state']['label'] ?? $room['game_mode'] ?? 'Ular Tangga Kuis') ?></strong></p>
+        <p>Mode game: <strong><?= esc($room['mode_label'] ?? $snapshot['mode_state']['label'] ?? $room['game_mode'] ?? 'Ular Tangga Kuis') ?></strong></p>
         <p>Kotak Mystery: <strong><?= esc((string) ($snapshot['board']['mystery_tile_count'] ?? 0)) ?></strong></p>
         <p>Pengambilan soal: <strong><?= esc(($room['question_selection']['strategy'] ?? 'difficulty_zone') === 'difficulty_zone' ? 'Zona difficulty' : 'Acak semua soal') ?></strong></p>
         <p>Topik soal: <strong><?= esc(($room['question_selection']['topics'] ?? []) === [] ? 'Semua topik (room lama)' : implode(', ', array_column($room['question_selection']['topics'], 'name'))) ?></strong></p>

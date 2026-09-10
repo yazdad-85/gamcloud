@@ -470,6 +470,8 @@
                 return 'Giliran pertama ditentukan: ' + teamNameByUuid(payload.current_team_uuid, snapshot);
             case 'dice.rolled':
                 return teamNameByUuid(payload.team_uuid, snapshot) + ' mendapat dadu ' + payload.dice_value;
+            case 'tier.selected':
+                return teamNameByUuid(payload.team_uuid, snapshot) + ' memilih ' + String(payload.tier || '').toUpperCase();
             case 'question.started':
                 return 'Pertanyaan untuk ' + teamNameByUuid(payload.team_uuid, snapshot);
             case 'answer.resolved':

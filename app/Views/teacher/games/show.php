@@ -4,14 +4,14 @@
 <?php $room = $snapshot['room']; ?>
 <div class="topbar">
     <div>
-        <h1 class="page-title"><?= esc($room['title']) ?></h1>
+        <h1 class="page-title"><?= esc($room['display_title'] ?? $room['title']) ?></h1>
         <p class="muted">PIN <strong><?= esc($room['pin']) ?></strong> / status <span data-room-status><?= esc($room['status']) ?></span></p>
         <p class="muted">
             Papan: <strong><?= esc((string) $snapshot['board']['tile_count']) ?> kotak</strong>
             / Mystery: <strong><?= esc((string) ($snapshot['board']['mystery_tile_count'] ?? 0)) ?> kotak</strong>
             /
             Mode:
-            <strong><?= esc($snapshot['mode_state']['label'] ?? $room['game_mode'] ?? 'Ular Tangga Kuis') ?></strong>
+            <strong><?= esc($room['mode_label'] ?? $snapshot['mode_state']['label'] ?? $room['game_mode'] ?? 'Ular Tangga Kuis') ?></strong>
             /
             Giliran pertama:
             <strong><?= esc(($room['turn_order_mode'] ?? 'random') === 'join_order' ? 'Urutan join' : 'Acak otomatis') ?></strong>

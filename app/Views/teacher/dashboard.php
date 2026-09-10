@@ -33,7 +33,7 @@
         <tbody>
         <?php foreach ($recentRooms as $room): ?>
             <tr>
-                <td><?= esc($room['title']) ?></td>
+                <td><?= esc(\App\Services\Game\GameRoomPresenter::displayTitle($room)) ?></td>
                 <td><strong><?= esc($room['pin']) ?></strong></td>
                 <td><span class="badge <?= strtolower(esc($room['status'])) ?>"><?= esc($room['status']) ?></span></td>
                 <td><a class="button secondary" href="/teacher/games/<?= esc($room['public_uuid']) ?>">Buka</a></td>

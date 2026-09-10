@@ -11,7 +11,7 @@ $baseUrl = '/teacher/games/' . $room['public_uuid'] . '/report';
 <div class="topbar">
     <div>
         <h1 class="page-title">Laporan Game</h1>
-        <p class="muted"><?= esc($room['title']) ?> / PIN <strong><?= esc($room['pin']) ?></strong> / Status <strong><?= esc($room['status']) ?></strong></p>
+        <p class="muted"><?= esc(\App\Services\Game\GameRoomPresenter::displayTitle($room)) ?> / PIN <strong><?= esc($room['pin']) ?></strong> / Status <strong><?= esc($room['status']) ?></strong></p>
     </div>
     <div class="topbar-actions">
         <a class="button secondary" href="/teacher/games/<?= esc($room['public_uuid']) ?>">Kembali</a>
