@@ -15,7 +15,7 @@
 - Task 10: complete with centralized Mystery Box timer coverage.
 - Task 11: implementation complete; pending questions remain visible but unanswerable until the teacher starts the timer.
 - Task 12: implementation complete; turn announcements wait for movement animation before taking over the projector.
-- Automated verification: `vendor/bin/phpunit` passes 119 tests with 421 assertions.
+- Automated verification: `vendor/bin/phpunit` passes all 119 tests.
 - Manual browser walkthrough for Tasks 9, 11, and 12 remains recommended on the target projector setup.
 
 ---
@@ -1724,5 +1724,5 @@ git commit -m "feat: show a full-screen turn-change announcement on the projecto
 
 ## Final Check
 
-- [x] Run the full suite one more time: `vendor/bin/phpunit` — 119 tests, 421 assertions passed.
+- [x] Run the full suite one more time: `vendor/bin/phpunit` — all 119 tests passed.
 - [ ] Walk through the manual verification checklists for Tasks 3, 5, 9, 11, and 12 back-to-back in one sitting, on both a `TEAM_DEVICE` room and a `TEACHER_CENTRALIZED` room, to confirm the two modes don't interfere with each other on the same running app.
