@@ -16,6 +16,7 @@ class GameTurnModel extends Model
         'state',
         'turn_number',
         'dice_value',
+        'selected_tier',
         'question_id',
         'question_started_at',
         'question_deadline_at',

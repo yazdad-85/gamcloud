@@ -24,6 +24,7 @@ class GameRoomModel extends Model
         'redemption_time_seconds',
         'max_teams',
         'max_position',
+        'lap_count',
         'game_mode',
         'participation_mode',
         'mode_state_json',
