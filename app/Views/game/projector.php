@@ -6,6 +6,10 @@
     <p>Ketuk untuk mengaktifkan suara efek permainan</p>
     <button type="button" data-fx-sound-unlock-button>🔊 Aktifkan Suara</button>
 </div>
+<div class="turn-announcement-overlay hidden" data-turn-announcement>
+    <p class="turn-announcement-label">Sekarang Giliran</p>
+    <p class="turn-announcement-name" data-turn-announcement-name></p>
+</div>
 <button type="button" class="fx-sound-mute" data-fx-sound-mute aria-pressed="false" title="Mute suara proyektor">🔊 Suara</button>
 <div class="projector-grid">
     <section>

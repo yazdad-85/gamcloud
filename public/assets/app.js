@@ -799,10 +799,13 @@
                     seenEvents.add(event.event_id);
 
                     if (SEQUENCED_EVENTS.has(event.event)) {
-                        sequenceBusy = sequenceBusy.then(() => runSequencedEvent(event, snapshot));
+                        sequenceBusy = sequenceBusy
+                            .then(() => runSequencedEvent(event, snapshot))
+                            .then(() => queueTurnAnnouncementIfNeeded(event, snapshot));
                         return;
                     }
 
+                    queueTurnAnnouncementIfNeeded(event, snapshot);
                     const item = overlayForEvent(event, snapshot);
                     if (item) {
                         overlayQueue.push(item);
@@ -1181,6 +1184,43 @@
             setBusy(false);
             playOverlayQueue(queue, isBusy, setBusy);
         }, item.tone === 'winner' ? 4200 : 2400);
+    }
+
+    const turnAnnouncementQueue = [];
+    let turnAnnouncementBusy = false;
+
+    function queueTurnAnnouncementIfNeeded(event, snapshot) {
+        const payload = event.payload || {};
+        const isTurnAdvanceEvent = event.event === 'answer.resolved'
+            || event.event === 'turn.skipped'
+            || event.event === 'turn.timeout';
+        if (snapshot.room.participation_mode !== 'TEACHER_CENTRALIZED'
+            || !isTurnAdvanceEvent
+            || !payload.next_team_uuid
+            || payload.finished) {
+            return;
+        }
+
+        turnAnnouncementQueue.push(teamNameByUuid(payload.next_team_uuid, snapshot));
+        playTurnAnnouncementQueue();
+    }
+
+    function playTurnAnnouncementQueue() {
+        const overlay = document.querySelector('[data-turn-announcement]');
+        const name = document.querySelector('[data-turn-announcement-name]');
+        if (!overlay || !name || turnAnnouncementBusy || turnAnnouncementQueue.length === 0) {
+            return;
+        }
+
+        turnAnnouncementBusy = true;
+        name.textContent = turnAnnouncementQueue.shift();
+        overlay.classList.remove('hidden');
+
+        window.setTimeout(() => {
+            overlay.classList.add('hidden');
+            turnAnnouncementBusy = false;
+            playTurnAnnouncementQueue();
+        }, 2500);
     }
 
     function controller(config) {
