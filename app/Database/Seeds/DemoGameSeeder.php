@@ -54,6 +54,10 @@ class DemoGameSeeder extends Seeder
             $this->upsertBoardTemplate($template, $now);
         }
 
+        foreach ($this->raceBoardTemplates() as $template) {
+            $this->upsertBoardTemplate($template, $now);
+        }
+
         $questions = [
             [
                 'stem' => 'Berapa hasil dari 7 x 8?',
@@ -84,6 +88,11 @@ class DemoGameSeeder extends Seeder
                 'stem' => 'Proses tumbuhan membuat makanan sendiri disebut ...',
                 'difficulty' => 'MEDIUM',
                 'options' => ['A' => ['Respirasi', false], 'B' => ['Fotosintesis', true], 'C' => ['Evaporasi', false], 'D' => ['Fermentasi', false]],
+            ],
+            [
+                'stem' => 'Ibu kota Indonesia adalah ...',
+                'difficulty' => 'HARD',
+                'options' => ['A' => ['Bandung', false], 'B' => ['Jakarta', true], 'C' => ['Surabaya', false], 'D' => ['Medan', false]],
             ],
         ];
 
@@ -138,6 +147,7 @@ class DemoGameSeeder extends Seeder
     {
         $data = [
             'name' => $template['name'],
+            'game_mode' => $template['game_mode'] ?? 'SNAKES_LADDERS',
             'tile_count' => 100,
             'ladders_json' => json_encode($template['ladders'], JSON_UNESCAPED_SLASHES),
             'snakes_json' => json_encode($template['snakes'], JSON_UNESCAPED_SLASHES),
@@ -276,6 +286,72 @@ class DemoGameSeeder extends Seeder
                         'accent' => '#c084fc',
                         'snake' => '#14b8a6',
                         'ladder' => '#facc15',
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    private function raceBoardTemplates(): array
+    {
+        return [
+            [
+                'name' => 'Stadion Atletik Senja',
+                'game_mode' => 'QUIZ_RACE',
+                'ladders' => [],
+                'snakes' => [],
+                'special_tiles' => [],
+                'theme' => [
+                    'theme_key' => 'athletic_dusk',
+                    'name' => 'Stadion Atletik Senja',
+                    'palette' => [
+                        'board' => '#7c2d12',
+                        'board2' => '#9a3412',
+                        'tileA' => '#fdba74',
+                        'tileB' => '#fb923c',
+                        'accent' => '#facc15',
+                        'snake' => '#7c2d12',
+                        'ladder' => '#facc15',
+                    ],
+                ],
+            ],
+            [
+                'name' => 'Arena Kartun Ceria',
+                'game_mode' => 'QUIZ_RACE',
+                'ladders' => [],
+                'snakes' => [],
+                'special_tiles' => [],
+                'theme' => [
+                    'theme_key' => 'cartoon_arena',
+                    'name' => 'Arena Kartun Ceria',
+                    'palette' => [
+                        'board' => '#0ea5e9',
+                        'board2' => '#38bdf8',
+                        'tileA' => '#ffffff',
+                        'tileB' => '#fde68a',
+                        'accent' => '#4ade80',
+                        'snake' => '#0ea5e9',
+                        'ladder' => '#4ade80',
+                    ],
+                ],
+            ],
+            [
+                'name' => 'Arena Neon Digital',
+                'game_mode' => 'QUIZ_RACE',
+                'ladders' => [],
+                'snakes' => [],
+                'special_tiles' => [],
+                'theme' => [
+                    'theme_key' => 'neon_arena',
+                    'name' => 'Arena Neon Digital',
+                    'palette' => [
+                        'board' => '#0b1020',
+                        'board2' => '#0f172a',
+                        'tileA' => '#111827',
+                        'tileB' => '#1e293b',
+                        'accent' => '#22d3ee',
+                        'snake' => '#22d3ee',
+                        'ladder' => '#f472b6',
                     ],
                 ],
             ],
