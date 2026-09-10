@@ -32,9 +32,17 @@ class GameRoomModel extends Model
         'finish_rule',
         'scoring_json',
         'question_selection_json',
+        'race_question_limit',
+        'race_round_question_counts_json',
+        'race_round_winner_bonus_points',
         'started_at',
         'finished_at',
         'expires_at',
+    ];
+    protected array $casts = [
+        'race_question_limit' => '?integer',
+        'race_round_question_counts_json' => '?json-array',
+        'race_round_winner_bonus_points' => '?integer',
     ];
     protected $useTimestamps = true;
 }
