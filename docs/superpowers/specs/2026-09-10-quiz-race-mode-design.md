@@ -78,10 +78,12 @@ Tombol "Lempar Dadu" pada panel gameplay digantikan tiga tombol tingkat (EASY/ME
 
 Lintasan dibagi rata menjadi beberapa **lap** (mis. lintasan 50 kotak ÷ 5 lap = 10 kotak per lap). Jumlah lap diatur guru saat membuat room (default disarankan **5 lap**), independen dari jumlah kotak.
 
-Lap punya dua efek:
+Lap punya dua efek, **tapi tidak keduanya berlaku di kedua mesin gameplay** — lihat catatan di bawah:
 
-1. **Zona kesulitan soal** — reuse mekanisme "Zona difficulty" yang sudah ada di Ular Tangga (soal dipilih berdasarkan posisi tim di papan): lap-lap awal soal didominasi EASY, lap tengah MEDIUM, lap-lap akhir HARD-dominan. Ini membuat balapan makin menegangkan mendekati finish.
-2. **Checkpoint** — begitu posisi tim melewati batas lap, projector menampilkan sorotan singkat ("Tim Elang menyelesaikan Lap 3!") dan tim mendapat **1 Nitro gratis** (lihat Bagian D) sebagai hadiah kecil, mendorong tim untuk buru-buru menuntaskan lap yang sedang berjalan.
+1. **Zona kesulitan soal** (khusus **B1 — Balapan Serentak**) — reuse mekanisme "Zona difficulty" yang sudah ada di Ular Tangga (soal dipilih berdasarkan posisi tim di papan): lap-lap awal soal didominasi EASY, lap tengah MEDIUM, lap-lap akhir HARD-dominan. Ini membuat balapan makin menegangkan mendekati finish.
+2. **Checkpoint** (berlaku di **B1 maupun B2**) — begitu posisi tim melewati batas lap, projector menampilkan sorotan singkat ("Tim Elang menyelesaikan Lap 3!") dan tim mendapat **1 Nitro gratis** (lihat Bagian D) sebagai hadiah kecil, mendorong tim untuk buru-buru menuntaskan lap yang sedang berjalan.
+
+**Kenapa poin 1 tidak berlaku di B2:** di Sprint Tanpa Dadu, tim sendiri yang memilih tingkat soal tiap giliran (EASY/MEDIUM/HARD, lihat Bagian B2) — itu inti strategi mode ini. Kalau sistem *juga* memaksakan zona kesulitan otomatis dari posisi lap, dua mekanisme itu akan rebutan menentukan hal yang sama. Jadi di B2, tim tetap bebas pilih tingkat di lap manapun; lap di B2 hanya soal checkpoint (poin 2).
 
 ## Bagian D — Kotak Spesial di Lintasan
 
