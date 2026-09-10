@@ -43,6 +43,17 @@
 <section class="panel" style="margin-top:16px">
     <div class="board" data-board></div>
 </section>
+
+<section class="panel roster-panel hidden" data-roster-panel style="margin-top:16px">
+    <h2>Tambah Tim</h2>
+    <p class="muted">Room ini memakai Mode Tanpa Device — tambahkan tim di sini sebelum menekan Start, tidak ada join PIN.</p>
+    <form class="roster-add-form" data-roster-add-form>
+        <input type="text" name="team_name" placeholder="Nama tim, mis. Tim Rajawali" maxlength="80" required>
+        <button class="button" type="submit">Tambah Tim</button>
+    </form>
+    <div class="alert hidden" data-roster-error></div>
+    <ul class="roster-list" data-roster-list></ul>
+</section>
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>

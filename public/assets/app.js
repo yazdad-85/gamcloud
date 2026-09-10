@@ -629,6 +629,10 @@
         const resumeButton = document.querySelector('[data-resume]');
         const skipTurnButton = document.querySelector('[data-skip-turn]');
         const forceTimeoutButton = document.querySelector('[data-force-timeout]');
+        const rosterPanel = document.querySelector('[data-roster-panel]');
+        const rosterAddForm = document.querySelector('[data-roster-add-form]');
+        const rosterList = document.querySelector('[data-roster-list]');
+        const rosterError = document.querySelector('[data-roster-error]');
 
         function drawTeacherControl() {
             const snapshot = runtime.getSnapshot();
@@ -654,6 +658,16 @@
             }
             if (forceTimeoutButton) {
                 forceTimeoutButton.disabled = !hasActiveQuestion;
+            }
+            if (rosterPanel) {
+                const isCentralized = snapshot.room.participation_mode === 'TEACHER_CENTRALIZED';
+                rosterPanel.classList.toggle('hidden', !isCentralized || snapshot.room.status !== 'LOBBY');
+                if (isCentralized && rosterList) {
+                    rosterList.innerHTML = (snapshot.teams || []).map((team) => (
+                        '<li>' + escapeHtml(team.name) +
+                        ' <button type="button" class="button secondary" data-roster-remove="' + team.uuid + '">Hapus</button></li>'
+                    )).join('') || '<li class="muted">Belum ada tim.</li>';
+                }
             }
         }
 
@@ -691,6 +705,49 @@
                 .then(runtime.refresh)
                 .catch((error) => runtime.setError(error.message))
                 .finally(drawTeacherControl);
+        }
+
+        if (rosterAddForm) {
+            rosterAddForm.addEventListener('submit', function (event) {
+                event.preventDefault();
+                const input = rosterAddForm.querySelector('input[name="team_name"]');
+                const teamName = input.value.trim();
+                if (teamName === '') {
+                    return;
+                }
+                if (rosterError) {
+                    rosterError.classList.add('hidden');
+                }
+                jsonFetch('/api/v1/rooms/' + config.roomUuid + '/teams', {
+                    method: 'POST',
+                    body: JSON.stringify({team_name: teamName}),
+                })
+                    .then(() => {
+                        input.value = '';
+                        return runtime.refresh();
+                    })
+                    .catch((error) => {
+                        if (rosterError) {
+                            rosterError.textContent = error.message;
+                            rosterError.classList.remove('hidden');
+                        }
+                    });
+            });
+        }
+
+        if (rosterList) {
+            rosterList.addEventListener('click', function (event) {
+                const button = event.target.closest('[data-roster-remove]');
+                if (!button) {
+                    return;
+                }
+                jsonFetch('/api/v1/rooms/' + config.roomUuid + '/teams/' + button.dataset.rosterRemove + '/remove', {
+                    method: 'POST',
+                    body: '{}',
+                })
+                    .then(runtime.refresh)
+                    .catch((error) => runtime.setError(error.message));
+            });
         }
 
         drawTeacherControl();

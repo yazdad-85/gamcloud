@@ -67,6 +67,20 @@ class RoomsController extends BaseController
         });
     }
 
+    public function addTeam(string $roomUuid)
+    {
+        $payload = $this->request->getJSON(true) ?: $this->request->getPost();
+        $teamName = (string) ($payload['team_name'] ?? '');
+        $avatar = (string) ($payload['avatar'] ?? 'robot');
+
+        return $this->respond(fn () => (new GameEngine())->addTeamByOwner($roomUuid, $teamName, $avatar));
+    }
+
+    public function removeTeam(string $roomUuid, string $teamUuid)
+    {
+        return $this->respond(fn () => (new GameEngine())->removeTeamByOwner($roomUuid, $teamUuid));
+    }
+
     public function roll(string $roomUuid)
     {
         $payload = $this->request->getJSON(true) ?: $this->request->getPost();
