@@ -31,21 +31,29 @@ class TeacherRegistrationService
     {
         $email = strtolower(trim((string) $payload['email']));
 
+        $existingRequest = $this->requests
+            ->where('email', $email)
+            ->whereIn('status', [self::STATUS_PENDING_EMAIL, self::STATUS_EMAIL_VERIFIED, self::STATUS_APPROVED])
+            ->orderBy('id', 'DESC')
+            ->first();
+        if ($existingRequest !== null) {
+            if ($existingRequest['status'] === self::STATUS_PENDING_EMAIL) {
+                throw new DomainException(
+                    'Email sudah terdaftar tetapi belum diverifikasi. '
+                    . 'Pilih "Belum verifikasi email?" pada halaman login untuk melanjutkan.'
+                );
+            }
+
+            throw new DomainException('Email sudah terdaftar. Silakan login atau gunakan menu Lupa password.');
+        }
+
         if ($this->teachers->where('email', $email)->first() !== null) {
-            throw new DomainException('Email sudah terdaftar atau sedang diproses.');
+            throw new DomainException('Email sudah terdaftar. Silakan login atau gunakan menu Lupa password.');
         }
 
         $users = model(UserModel::class);
         if ($users->findByCredentials(['email' => $email]) !== null) {
-            throw new DomainException('Email sudah terdaftar atau sedang diproses.');
-        }
-
-        $existingRequest = $this->requests
-            ->where('email', $email)
-            ->whereIn('status', [self::STATUS_PENDING_EMAIL, self::STATUS_EMAIL_VERIFIED, self::STATUS_APPROVED])
-            ->first();
-        if ($existingRequest !== null) {
-            throw new DomainException('Email sudah terdaftar atau sedang diproses.');
+            throw new DomainException('Email sudah terdaftar. Silakan login atau gunakan menu Lupa password.');
         }
 
         $user = new User([
@@ -93,6 +101,36 @@ class TeacherRegistrationService
     public function findByUuid(string $uuid): ?array
     {
         return $this->requests->where('public_uuid', $uuid)->first();
+    }
+
+    public function findLatestByEmail(string $email): ?array
+    {
+        return $this->requests
+            ->where('email', strtolower(trim($email)))
+            ->orderBy('id', 'DESC')
+            ->first();
+    }
+
+    public function findPendingByEmail(string $email): ?array
+    {
+        return $this->requests
+            ->where('email', strtolower(trim($email)))
+            ->where('status', self::STATUS_PENDING_EMAIL)
+            ->orderBy('id', 'DESC')
+            ->first();
+    }
+
+    public function findPendingByAuthUserId(int $userId): ?array
+    {
+        if ($userId < 1) {
+            return null;
+        }
+
+        return $this->requests
+            ->where('auth_user_id', $userId)
+            ->where('status', self::STATUS_PENDING_EMAIL)
+            ->orderBy('id', 'DESC')
+            ->first();
     }
 
     public function verifyEmail(string $uuid, string $code): array

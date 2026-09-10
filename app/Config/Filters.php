@@ -122,6 +122,8 @@ class Filters extends BaseFilters
                 'join',
                 'daftar-guru',
                 'daftar-guru/*',
+                'lupa-password',
+                'lupa-password/*',
                 'teacher/*',
                 'superadmin/*',
                 'api/v1/rooms/*/start',

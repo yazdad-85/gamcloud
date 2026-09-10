@@ -97,6 +97,8 @@
             <p>Setiap guru hanya melihat soal dan room miliknya sendiri.</p>
         </div>
 
+        <p class="auth-switch"><a href="/daftar-guru/verifikasi">Belum verifikasi email?</a></p>
+        <p class="auth-switch"><a href="/lupa-password">Lupa password?</a></p>
         <p class="auth-switch">Belum punya akun? <a href="/daftar-guru">Ajukan akun guru</a></p>
     </aside>
 </section>

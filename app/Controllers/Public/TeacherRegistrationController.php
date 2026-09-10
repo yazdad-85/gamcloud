@@ -14,6 +14,52 @@ class TeacherRegistrationController extends BaseController
         return view('public/teacher_register');
     }
 
+    public function resumeForm(): string
+    {
+        return view('public/teacher_verify_lookup');
+    }
+
+    public function resume(): RedirectResponse
+    {
+        $email = strtolower(trim((string) $this->request->getPost('email')));
+        if (! $this->validateData(['email' => $email], [
+            'email' => 'required|valid_email|max_length[190]',
+        ])) {
+            return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+        }
+
+        $service = new TeacherRegistrationService();
+        $registration = $service->findLatestByEmail($email);
+
+        if ($registration === null) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Pengajuan dengan email tersebut tidak ditemukan. Silakan daftar jika belum memiliki akun.');
+        }
+
+        if ($registration['status'] === TeacherRegistrationService::STATUS_PENDING_EMAIL) {
+            return redirect()
+                ->to('/daftar-guru/verifikasi/' . $registration['public_uuid'])
+                ->with('message', 'Lanjutkan verifikasi email. Anda dapat meminta kode baru jika kode sebelumnya kedaluwarsa.');
+        }
+
+        if ($registration['status'] === TeacherRegistrationService::STATUS_EMAIL_VERIFIED) {
+            $service->activateVerifiedRequest((string) $registration['public_uuid']);
+
+            return redirect()->to('/login')
+                ->with('message', 'Email sudah terverifikasi dan akun sudah aktif. Silakan login.');
+        }
+
+        if ($registration['status'] === TeacherRegistrationService::STATUS_APPROVED) {
+            return redirect()->to('/login')
+                ->with('message', 'Akun sudah aktif. Silakan login dengan email dan password Anda.');
+        }
+
+        return redirect()->back()
+            ->withInput()
+            ->with('error', 'Pengajuan akun telah ditolak. Hubungi pengelola aplikasi jika memerlukan bantuan.');
+    }
+
     public function store()
     {
         $rules = [

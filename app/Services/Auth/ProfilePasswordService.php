@@ -27,7 +27,7 @@ class ProfilePasswordService
         }
 
         $email = (string) $user->getEmail();
-        if ($email === '' || ! auth()->check(['email' => $email, 'password' => $currentPassword])) {
+        if ($email === '' || ! auth()->check(['email' => $email, 'password' => $currentPassword])->isOK()) {
             throw new DomainException('Password saat ini tidak benar.');
         }
 

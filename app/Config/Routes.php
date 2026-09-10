@@ -12,11 +12,21 @@ $routes->post('join', 'Public\JoinController::join', ['filter' => 'rateLimit:8,6
 
 $routes->get('daftar-guru', 'Public\TeacherRegistrationController::create', ['filter' => 'rateLimit:8,60,teacher-register']);
 $routes->post('daftar-guru', 'Public\TeacherRegistrationController::store', ['filter' => 'rateLimit:4,300,teacher-register-submit']);
+$routes->get('daftar-guru/verifikasi', 'Public\TeacherRegistrationController::resumeForm', ['filter' => 'rateLimit:10,60,teacher-register-resume']);
+$routes->post('daftar-guru/verifikasi', 'Public\TeacherRegistrationController::resume', ['filter' => 'rateLimit:5,300,teacher-register-resume']);
 $routes->get('daftar-guru/verifikasi/(:segment)', 'Public\TeacherRegistrationController::verifyForm/$1', ['filter' => 'rateLimit:20,60,teacher-register-verify']);
 $routes->post('daftar-guru/verifikasi/(:segment)', 'Public\TeacherRegistrationController::verify/$1', ['filter' => 'rateLimit:10,300,teacher-register-verify']);
 $routes->post('daftar-guru/resend/(:segment)', 'Public\TeacherRegistrationController::resend/$1', ['filter' => 'rateLimit:3,300,teacher-register-resend']);
 $routes->get('register', 'Public\TeacherRegistrationController::create', ['filter' => 'rateLimit:8,60,teacher-register']);
 $routes->post('register', 'Public\TeacherRegistrationController::store', ['filter' => 'rateLimit:4,300,teacher-register-submit']);
+
+$routes->get('lupa-password', 'Auth\PasswordResetController::requestForm', ['filter' => 'rateLimit:10,60,password-reset']);
+$routes->post('lupa-password', 'Auth\PasswordResetController::requestLink', ['filter' => 'rateLimit:3,300,password-reset']);
+$routes->get('lupa-password/reset', 'Auth\PasswordResetController::resetForm', ['filter' => 'rateLimit:15,60,password-reset']);
+$routes->post('lupa-password/reset', 'Auth\PasswordResetController::reset', ['filter' => 'rateLimit:5,300,password-reset']);
+
+$routes->get('login', 'Auth\LoginController::loginView', ['as' => 'login']);
+$routes->post('login', 'Auth\LoginController::loginAction');
 
 $routes->get('teacher', 'Teacher\DashboardController::index', ['filter' => 'teacherAccess']);
 $routes->get('teacher/questions', 'Teacher\QuestionController::index', ['filter' => 'teacherAccess']);
@@ -55,7 +65,7 @@ $routes->get('game/(:segment)/controller', 'Game\ControllerController::show/$1')
 
 $routes->post('logout', '\CodeIgniter\Shield\Controllers\LoginController::logoutAction');
 
-service('auth')->routes($routes);
+service('auth')->routes($routes, ['except' => ['login']]);
 
 $routes->group('api/v1', static function ($routes): void {
     $routes->get('rooms/(:segment)/state', 'Api\V1\RoomsController::state/$1', ['filter' => 'rateLimit:180,60,api-state']);
