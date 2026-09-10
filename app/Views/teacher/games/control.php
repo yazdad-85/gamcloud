@@ -41,10 +41,6 @@
     </div>
 </section>
 
-<section class="panel" style="margin-top:16px">
-    <div class="board" data-board></div>
-</section>
-
 <section class="panel roster-panel hidden" data-roster-panel style="margin-top:16px">
     <h2>Tambah Tim</h2>
     <p class="muted">Room ini memakai Mode Tanpa Device — tambahkan tim di sini sebelum menekan Start, tidak ada join PIN.</p>
@@ -55,6 +51,51 @@
     <div class="alert hidden" data-roster-error></div>
     <ul class="roster-list" data-roster-list></ul>
 </section>
+
+<section class="panel gameplay-panel hidden" data-gameplay-panel style="margin-top:16px">
+    <h2>Giliran Sekarang</h2>
+    <div class="team-identity">
+        <span class="team-avatar-badge" data-team-avatar><span data-team-avatar-initials></span></span>
+        <div>
+            <h3 data-team-name>Tim</h3>
+            <p><span data-turn-info>Menunggu giliran</span></p>
+        </div>
+    </div>
+    <p>Skor <strong data-team-score>0</strong> / Kotak <strong data-team-position>1</strong></p>
+
+    <div class="move-feedback hidden" data-move-feedback></div>
+
+    <div class="dice-panel" data-dice-panel>
+        <div class="dice-stage">
+            <div class="dice-face" data-dice-display>?</div>
+            <div>
+                <p class="dice-caption" data-dice-caption>Menunggu giliran</p>
+                <p class="muted" data-roll-reason>Guru belum memulai permainan.</p>
+                <p class="team-countdown" data-countdown>-</p>
+            </div>
+        </div>
+        <button class="button roll-button" data-roll type="button">Lempar Dadu</button>
+    </div>
+
+    <div class="gameplay-section hidden" data-question>
+        <h3 data-question-title>Pertanyaan</h3>
+        <p data-question-stem></p>
+        <p class="question-meta" data-question-meta></p>
+        <div data-question-media></div>
+        <div class="answer-list" data-options></div>
+    </div>
+
+    <div class="gameplay-section hidden" data-mystery-choice>
+        <h3>Kotak Misteri</h3>
+        <p class="muted">Guru pilih niat tim sebelum soal HARD tampil.</p>
+        <button class="button" type="button" data-mystery-self>Untuk Timku</button>
+        <div class="answer-list" data-mystery-opponents></div>
+    </div>
+</section>
+
+<section class="panel" style="margin-top:16px">
+    <div class="board" data-board></div>
+</section>
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>
@@ -63,5 +104,16 @@ UlarTangga.teacherControl({
     roomUuid: <?= json_encode($room['uuid'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
     snapshot: <?= json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
 });
+if (<?= json_encode(($snapshot['room']['participation_mode'] ?? 'TEAM_DEVICE') === 'TEACHER_CENTRALIZED') ?>) {
+    UlarTangga.controller({
+        roomUuid: <?= json_encode($room['uuid'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+        snapshot: <?= json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+        confirmBeforeAnswer: true,
+        teamUuidResolver: function () {
+            var el = document.querySelector('[data-current-team]');
+            return el ? el.dataset.teamUuid : null;
+        },
+    });
+}
 </script>
 <?= $this->endSection() ?>

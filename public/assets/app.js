@@ -511,6 +511,7 @@
         root.querySelectorAll('[data-current-team]').forEach((el) => {
             const current = (snapshot.teams || []).find((team) => team.uuid === snapshot.room.current_team_uuid);
             el.textContent = current ? current.name : '-';
+            el.dataset.teamUuid = snapshot.room.current_team_uuid || '';
         });
         updateCountdown(root, snapshot);
     }
@@ -553,7 +554,13 @@
 
     function countdownState(snapshot) {
         const turn = snapshot.current_turn;
-        if (!turn || turn.state !== 'QUESTION_ACTIVE' || !turn.deadline_at) {
+        const timedStates = [
+            'QUESTION_ACTIVE',
+            'MYSTERY_QUESTION_ACTIVE',
+            'SNAKE_REDEMPTION_ACTIVE',
+            'LADDER_CHALLENGE_ACTIVE',
+        ];
+        if (!turn || !timedStates.includes(turn.state) || !turn.deadline_at) {
             return {label: '-', remaining: null, percent: 0};
         }
 
@@ -634,6 +641,7 @@
         const rosterAddForm = document.querySelector('[data-roster-add-form]');
         const rosterList = document.querySelector('[data-roster-list]');
         const rosterError = document.querySelector('[data-roster-error]');
+        const gameplayPanel = document.querySelector('[data-gameplay-panel]');
 
         function drawTeacherControl() {
             const snapshot = runtime.getSnapshot();
@@ -674,6 +682,10 @@
                         ' <button type="button" class="button secondary" data-roster-remove="' + team.uuid + '">Hapus</button></li>'
                     )).join('') || '<li class="muted">Belum ada tim.</li>';
                 }
+            }
+            if (gameplayPanel) {
+                const isCentralized = snapshot.room.participation_mode === 'TEACHER_CENTRALIZED';
+                gameplayPanel.classList.toggle('hidden', !isCentralized || snapshot.room.status !== 'PLAYING');
             }
         }
 
@@ -1173,6 +1185,11 @@
 
     function controller(config) {
         const runtime = createRuntime(config);
+
+        function activeTeamUuid() {
+            return typeof config.teamUuidResolver === 'function' ? config.teamUuidResolver() : config.teamUuid;
+        }
+
         const rollButton = document.querySelector('[data-roll]');
         const dicePanel = document.querySelector('[data-dice-panel]');
         const diceDisplay = document.querySelector('[data-dice-display]');
@@ -1190,6 +1207,8 @@
         let isRolling = false;
         let isAnswering = false;
         let isChoosingMystery = false;
+        let pendingConfirmOptionId = null;
+        let pendingConfirmQuestionId = null;
         let moveFeedbackTimer = null;
         const seenTeamEvents = new Set((config.snapshot.events || []).map((event) => event.event_id));
 
@@ -1214,7 +1233,7 @@
                 }
                 seenTeamEvents.add(event.event_id);
                 const payload = event.payload || {};
-                if (payload.team_uuid !== config.teamUuid) {
+                if (payload.team_uuid !== activeTeamUuid()) {
                     return;
                 }
                 if (event.event === 'answer.resolved') {
@@ -1236,8 +1255,14 @@
             const snapshot = runtime.getSnapshot();
             checkMoveFeedback(snapshot);
             const turn = snapshot.current_turn;
-            const isMyTurn = turn && turn.team_uuid === config.teamUuid;
-            const team = (snapshot.teams || []).find((item) => item.uuid === config.teamUuid);
+            const activeQuestionId = turn && turn.question ? turn.question.id : null;
+            if (activeQuestionId !== pendingConfirmQuestionId) {
+                pendingConfirmQuestionId = activeQuestionId;
+                pendingConfirmOptionId = null;
+            }
+            const teamUuid = activeTeamUuid();
+            const isMyTurn = turn && turn.team_uuid === teamUuid;
+            const team = (snapshot.teams || []).find((item) => item.uuid === teamUuid);
             const current = (snapshot.teams || []).find((item) => item.uuid === snapshot.room.current_team_uuid);
 
             if (teamAvatarBadge) {
@@ -1250,6 +1275,9 @@
             const canRoll = modeCan(snapshot, 'roll') && snapshot.room.status === 'PLAYING' && isMyTurn && turn && turn.state === 'ROLL_READY';
             const timeExpired = isClientTurnExpired(snapshot);
             const isMysteryChoice = Boolean(isMyTurn && turn && turn.state === 'MYSTERY_CHOICE_PENDING');
+            const isPendingQuestion = Boolean(isMyTurn && turn
+                && (turn.state === 'QUESTION_PENDING_START' || turn.state === 'MYSTERY_QUESTION_PENDING_START')
+                && turn.question);
             const canAnswer = modeCan(snapshot, 'answer') && isMyTurn && turn
                 && (turn.state === 'QUESTION_ACTIVE' || turn.state === 'MYSTERY_QUESTION_ACTIVE'
                     || turn.state === 'SNAKE_REDEMPTION_ACTIVE' || turn.state === 'LADDER_CHALLENGE_ACTIVE')
@@ -1286,6 +1314,8 @@
                     rollButton.textContent = 'Game Dijeda';
                 } else if (isRolling) {
                     rollButton.textContent = 'Mengocok Dadu';
+                } else if (isPendingQuestion) {
+                    rollButton.textContent = 'Menunggu Waktu Jawab';
                 } else if (!isMyTurn || !turn) {
                     rollButton.textContent = 'Belum Giliran';
                 } else if (isMyTurn && turn && turn.state === 'QUESTION_ACTIVE' && timeExpired) {
@@ -1297,14 +1327,14 @@
                 }
             }
 
-            const showQuestion = canAnswer || (isMyTurn && turn
+            const showQuestion = canAnswer || isPendingQuestion || (isMyTurn && turn
                 && (turn.state === 'QUESTION_ACTIVE' || turn.state === 'MYSTERY_QUESTION_ACTIVE'
                     || turn.state === 'SNAKE_REDEMPTION_ACTIVE' || turn.state === 'LADDER_CHALLENGE_ACTIVE')
                 && turn.question);
             if (questionBox && optionList) {
                 questionBox.classList.toggle('hidden', !showQuestion);
                 optionList.innerHTML = showQuestion ? turn.question.options.map((option) => (
-                    '<button class="answer-button" data-option-id="' + option.id + '"' + (isAnswering ? ' disabled' : '') + '>' +
+                    '<button class="answer-button' + (config.confirmBeforeAnswer && String(option.id) === String(pendingConfirmOptionId) ? ' is-selected' : '') + '" data-option-id="' + option.id + '"' + (isAnswering ? ' disabled' : '') + '>' +
                     '<strong>' + escapeHtml(option.label) + '</strong>' +
                     '<span>' + escapeHtml(option.body) + '</span>' +
                     mediaHtml(option.media, 'option-player-media') +
@@ -1346,7 +1376,7 @@
                 }
                 if (mysteryOpponents) {
                     mysteryOpponents.innerHTML = isMysteryChoice ? (snapshot.teams || [])
-                        .filter((item) => item.uuid !== config.teamUuid)
+                        .filter((item) => item.uuid !== activeTeamUuid())
                         .map((item) => '<button class="answer-button" type="button" data-mystery-target="' + item.uuid + '"' + (isChoosingMystery ? ' disabled' : '') + '><strong>Serang</strong><span>' + escapeHtml(item.name) + '</span></button>')
                         .join('') : '';
                 }
@@ -1369,6 +1399,8 @@
                     diceCaption.textContent = 'Dadu sedang dikocok';
                 } else if (state.canRoll) {
                     diceCaption.textContent = 'Siap lempar';
+                } else if (turn && (turn.state === 'QUESTION_PENDING_START' || turn.state === 'MYSTERY_QUESTION_PENDING_START')) {
+                    diceCaption.textContent = 'Soal siap dibacakan';
                 } else if (state.timeExpired) {
                     diceCaption.textContent = 'Waktu habis';
                 } else if (state.canAnswer) {
@@ -1420,6 +1452,10 @@
                 return 'Pilih jawaban agar pion bergerak.';
             }
 
+            if (turn.state === 'QUESTION_PENDING_START' || turn.state === 'MYSTERY_QUESTION_PENDING_START') {
+                return 'Tekan Mulai Waktu Jawab setelah soal selesai dibacakan.';
+            }
+
             return 'Sekarang giliran ' + state.currentTeamName + '.';
         }
 
@@ -1444,7 +1480,7 @@
 
                 const rollRequest = jsonFetch('/api/v1/rooms/' + config.roomUuid + '/roll', {
                     method: 'POST',
-                    body: JSON.stringify({team_uuid: config.teamUuid}),
+                    body: JSON.stringify({team_uuid: activeTeamUuid()}),
                 });
                 const diceValuePromise = rollRequest.then((data) => Number(data.current_turn.dice_value));
                 const cubeSettled = GameFx.rollDie(diceDisplay, {resultPromise: diceValuePromise, minDurationMs: 1200});
@@ -1465,6 +1501,11 @@
                 if (!button || button.disabled || isAnswering) {
                     return;
                 }
+                if (config.confirmBeforeAnswer && String(button.dataset.optionId) !== String(pendingConfirmOptionId)) {
+                    pendingConfirmOptionId = button.dataset.optionId;
+                    drawController();
+                    return;
+                }
                 isAnswering = true;
                 drawController();
                 runtime.setError('');
@@ -1477,12 +1518,13 @@
                 }
                 jsonFetch('/api/v1/rooms/' + config.roomUuid + endpoint, {
                     method: 'POST',
-                    body: JSON.stringify({team_uuid: config.teamUuid, option_id: button.dataset.optionId}),
+                    body: JSON.stringify({team_uuid: activeTeamUuid(), option_id: button.dataset.optionId}),
                 })
                     .then(runtime.refresh)
                     .catch((error) => runtime.setError(error.message))
                     .finally(() => {
                         isAnswering = false;
+                        pendingConfirmOptionId = null;
                         drawController();
                     });
             });
@@ -1498,7 +1540,7 @@
                 runtime.setError('');
                 jsonFetch('/api/v1/rooms/' + config.roomUuid + '/mystery/choose', {
                     method: 'POST',
-                    body: JSON.stringify({team_uuid: config.teamUuid, target: 'SELF'}),
+                    body: JSON.stringify({team_uuid: activeTeamUuid(), target: 'SELF'}),
                 })
                     .then(runtime.refresh)
                     .catch((error) => runtime.setError(error.message))
@@ -1520,7 +1562,7 @@
                 runtime.setError('');
                 jsonFetch('/api/v1/rooms/' + config.roomUuid + '/mystery/choose', {
                     method: 'POST',
-                    body: JSON.stringify({team_uuid: config.teamUuid, target: button.dataset.mysteryTarget}),
+                    body: JSON.stringify({team_uuid: activeTeamUuid(), target: button.dataset.mysteryTarget}),
                 })
                     .then(runtime.refresh)
                     .catch((error) => runtime.setError(error.message))

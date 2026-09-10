@@ -3016,6 +3016,11 @@ textarea {
     text-align: left;
 }
 
+.answer-button.is-selected {
+    outline: 3px solid #f97316;
+    outline-offset: -3px;
+}
+
 .answer-button strong {
     align-items: center;
     background: var(--surface-soft);
