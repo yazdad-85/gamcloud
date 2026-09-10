@@ -42,7 +42,8 @@ class GameController extends BaseController
         return view('teacher/games/create', [
             'isSuperadmin' => $tenant->isSuperadmin(),
             'teachers' => $teachers,
-            'boards' => (new BoardTemplateModel())->where('status', 'ACTIVE')->orderBy('name', 'ASC')->findAll(),
+            'boards' => (new BoardTemplateModel())->where('status', 'ACTIVE')->where('game_mode', 'SNAKES_LADDERS')->orderBy('name', 'ASC')->findAll(),
+            'raceBoards' => (new BoardTemplateModel())->where('status', 'ACTIVE')->where('game_mode', 'QUIZ_RACE')->orderBy('name', 'ASC')->findAll(),
             'gameModes' => (new GameModeCatalog())->options(),
             'questionTopicCatalog' => $tenant->isSuperadmin() ? [] : $engine->questionTopicCatalog($tenant->teacherId()),
             'questionTopicCatalogs' => $questionTopicCatalogs,
@@ -102,6 +103,16 @@ class GameController extends BaseController
             $participationMode = 'TEAM_DEVICE';
         }
 
+        $trackLength = (int) $this->request->getPost('track_length');
+        if ($trackLength < 6 || $trackLength > 60) {
+            $trackLength = 24;
+        }
+
+        $lapCount = (int) $this->request->getPost('lap_count');
+        if ($lapCount < 1 || $lapCount > 10) {
+            $lapCount = 5;
+        }
+
         $engine = new GameEngine();
         $questionBankSummary = $engine->questionBankSummary($teacherId);
         if ((int) $questionBankSummary['total'] < 1) {
@@ -120,6 +131,8 @@ class GameController extends BaseController
             $snapshot = $engine->createRoom($teacherId, $title, [
                 'game_mode' => $gameMode,
                 'participation_mode' => $participationMode,
+                'track_length' => $trackLength,
+                'lap_count' => $lapCount,
                 'board_template_id' => $boardTemplateId,
                 'turn_order_mode' => $turnOrderMode,
                 'finish_rule' => $finishRule,

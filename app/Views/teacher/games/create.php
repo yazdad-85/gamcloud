@@ -165,7 +165,7 @@
             </div>
             <p class="field-help">Tanpa Device: tidak ada join PIN, guru mengoperasikan dadu &amp; jawaban dari halaman Control Game (1 laptop + projector). Cocok untuk sekolah yang melarang HP siswa.</p>
         </div>
-        <div class="field">
+        <div class="field" data-snakes-only>
             <label>Tema Papan</label>
             <div class="theme-grid">
                 <label class="theme-option">
@@ -207,12 +207,12 @@
             </div>
             <p class="field-help">Tema memengaruhi suasana papan (warna, ular, tangga), bukan mengganti soal satu per satu.</p>
         </div>
-        <div class="field">
+        <div class="field" data-snakes-only>
             <label for="mystery_tile_count">Jumlah Kotak Mystery</label>
             <input type="number" id="mystery_tile_count" name="mystery_tile_count" min="0" max="6" step="1" value="<?= esc((string) old('mystery_tile_count', 2)) ?>" required>
             <p class="field-help">Kotak Mystery ditempatkan acak di papan saat room dibuat, tidak menumpuk dengan kotak spesial lain.</p>
         </div>
-        <div class="field">
+        <div class="field" data-snakes-only>
             <label>Ukuran Papan</label>
             <div class="check-grid">
                 <label class="check-option">
@@ -238,13 +238,52 @@
             </select>
             <p class="field-help">Mode acak lebih adil untuk kelas karena tidak bergantung urutan masuk lobby.</p>
         </div>
-        <div class="field">
+        <div class="field" data-snakes-only>
             <label for="finish_rule">Aturan Finish</label>
             <select id="finish_rule" name="finish_rule">
                 <option value="clamp_finish" <?= old('finish_rule', 'clamp_finish') === 'clamp_finish' ? 'selected' : '' ?>>Langsung finish jika melewati kotak akhir</option>
                 <option value="exact_finish" <?= old('finish_rule') === 'exact_finish' ? 'selected' : '' ?>>Harus pas, jika lebih akan memantul mundur</option>
             </select>
             <p class="field-help">Mode harus pas membuat akhir permainan lebih tegang.</p>
+        </div>
+        <div class="field hidden" data-race-only>
+            <label>Tema Lintasan</label>
+            <div class="theme-grid">
+                <label class="theme-option">
+                    <input type="radio" name="board_template_id" value="" <?= (string) old('board_template_id', '') === '' ? 'checked' : '' ?>>
+                    <span class="theme-preview theme-preview-auto">Otomatis</span>
+                    <strong>Pilih Otomatis</strong>
+                    <span class="muted">Sistem pilih tema lintasan pertama</span>
+                </label>
+                <?php foreach ($raceBoards as $board): ?>
+                    <?php
+                        $raceTheme = json_decode((string) ($board['theme_json'] ?? ''), true) ?: [];
+                        $racePalette = $raceTheme['palette'] ?? [];
+                    ?>
+                    <label class="theme-option">
+                        <input type="radio" name="board_template_id" value="<?= esc((string) $board['id']) ?>" <?= (string) old('board_template_id') === (string) $board['id'] ? 'checked' : '' ?>>
+                        <span class="theme-preview theme-preview-track" style="background:<?= esc($racePalette['board'] ?? '#111827') ?>">
+                            <span class="theme-preview-lane" style="background:<?= esc($racePalette['tileA'] ?? '#f8fafc') ?>"></span>
+                            <span class="theme-preview-lane" style="background:<?= esc($racePalette['tileB'] ?? '#e0f2fe') ?>"></span>
+                            <span class="theme-preview-finish" style="background:<?= esc($racePalette['accent'] ?? '#f97316') ?>"></span>
+                        </span>
+                        <strong><?= esc($raceTheme['name'] ?? $board['name']) ?></strong>
+                        <span class="muted">Tema lintasan balap</span>
+                    </label>
+                <?php endforeach ?>
+            </div>
+            <p class="field-help">Tema memengaruhi suasana lintasan (warna &amp; nuansa), bukan mengganti soal.</p>
+        </div>
+        <div class="field hidden" data-race-only>
+            <label for="track_length">Panjang Lintasan</label>
+            <input type="number" id="track_length" name="track_length" min="6" max="60" step="1" value="<?= esc((string) old('track_length', 24)) ?>" required>
+            <p class="field-help">Jumlah kotak dari garis start ke garis finish.</p>
+        </div>
+        <div class="field hidden" data-race-only>
+            <label for="lap_count">Jumlah Lap</label>
+            <input type="number" id="lap_count" name="lap_count" min="1" max="10" step="1" value="<?= esc((string) old('lap_count', 5)) ?>" required>
+            <p class="field-help">Lintasan dibagi rata jadi beberapa lap; melewati batas lap memberi bonus 1 langkah instan.</p>
+            <p class="field-help" data-race-bank-note></p>
         </div>
         <div class="field">
             <label>Scoring Tension</label>
@@ -372,6 +411,70 @@
         teacherSelect.addEventListener('change', drawTopics);
     }
     drawSummary();
+})();
+</script>
+<script>
+(function () {
+    const raceOnlyFields = document.querySelectorAll('[data-race-only]');
+    const snakesOnlyFields = document.querySelectorAll('[data-snakes-only]');
+    const nearFinishCheckbox = document.querySelector('input[name="near_finish_bonus"]');
+    const teamDeviceRadio = document.querySelector('input[name="participation_mode"][value="TEAM_DEVICE"]');
+    const centralizedRadio = document.querySelector('input[name="participation_mode"][value="TEACHER_CENTRALIZED"]');
+    const trackLengthInput = document.querySelector('#track_length');
+    const raceBankNote = document.querySelector('[data-race-bank-note]');
+
+    function currentGameMode() {
+        const checked = document.querySelector('input[name="game_mode"]:checked');
+        return checked ? checked.value : 'SNAKES_LADDERS';
+    }
+
+    function updateRaceBankNote() {
+        if (!raceBankNote) {
+            return;
+        }
+        if (currentGameMode() !== 'QUIZ_RACE') {
+            raceBankNote.textContent = '';
+            return;
+        }
+        const trackLength = Number(trackLengthInput ? trackLengthInput.value : 0) || 0;
+        const totalEl = document.querySelector('[data-bank-total]');
+        const totalAvailable = Number(totalEl ? totalEl.textContent : 0) || 0;
+        const maxTeams = 6;
+        const estimatedNeeded = maxTeams * Math.ceil(trackLength / 2);
+        raceBankNote.textContent = totalAvailable < estimatedNeeded
+            ? 'Bank soal topik ini diperkirakan kurang untuk lintasan sepanjang ini (perkiraan butuh ~' + estimatedNeeded + ' soal untuk ' + maxTeams + ' tim) — soal kemungkinan akan berulang sebelum tim mencapai finish.'
+            : '';
+    }
+
+    function applyModeVisibility() {
+        const isRace = currentGameMode() === 'QUIZ_RACE';
+        raceOnlyFields.forEach((field) => field.classList.toggle('hidden', !isRace));
+        snakesOnlyFields.forEach((field) => field.classList.toggle('hidden', isRace));
+        if (nearFinishCheckbox) {
+            nearFinishCheckbox.disabled = isRace;
+            if (isRace) {
+                nearFinishCheckbox.checked = false;
+            }
+        }
+        if (teamDeviceRadio) {
+            teamDeviceRadio.disabled = isRace;
+            if (isRace && teamDeviceRadio.checked && centralizedRadio) {
+                centralizedRadio.checked = true;
+            }
+        }
+        updateRaceBankNote();
+    }
+
+    document.querySelectorAll('input[name="game_mode"]').forEach((radio) => radio.addEventListener('change', applyModeVisibility));
+    if (trackLengthInput) {
+        trackLengthInput.addEventListener('input', updateRaceBankNote);
+    }
+    document.addEventListener('change', function (event) {
+        if (event.target && event.target.name === 'question_topic_uuids[]') {
+            updateRaceBankNote();
+        }
+    });
+    applyModeVisibility();
 })();
 </script>
 <?= $this->endSection() ?>
