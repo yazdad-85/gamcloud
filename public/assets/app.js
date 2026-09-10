@@ -1233,6 +1233,7 @@
         }
 
         const rollButton = document.querySelector('[data-roll]');
+        const tierSelect = document.querySelector('[data-tier-select]');
         const dicePanel = document.querySelector('[data-dice-panel]');
         const diceDisplay = document.querySelector('[data-dice-display]');
         const diceCaption = document.querySelector('[data-dice-caption]');
@@ -1315,6 +1316,9 @@
                 teamAvatarInitials.textContent = team ? teamInitials(team.name) : '';
             }
             const canRoll = modeCan(snapshot, 'roll') && snapshot.room.status === 'PLAYING' && isMyTurn && turn && turn.state === 'ROLL_READY';
+            const isQuizRace = Boolean(snapshot.mode_state && snapshot.mode_state.key === 'QUIZ_RACE');
+            const canSelectTier = modeCan(snapshot, 'select_tier') && snapshot.room.status === 'PLAYING' && isMyTurn && turn && turn.state === 'ROLL_READY';
+            const oilSpillLocked = Boolean(team && team.active_effects && team.active_effects.oil_spill_lock);
             const timeExpired = isClientTurnExpired(snapshot);
             const isMysteryChoice = Boolean(isMyTurn && turn && turn.state === 'MYSTERY_CHOICE_PENDING');
             const isPendingQuestion = Boolean(isMyTurn && turn
@@ -1367,6 +1371,18 @@
                 } else {
                     rollButton.textContent = 'Lempar Dadu';
                 }
+            }
+
+            if (rollButton) {
+                rollButton.classList.toggle('hidden', isQuizRace);
+            }
+
+            if (tierSelect) {
+                tierSelect.classList.toggle('hidden', !isQuizRace);
+                tierSelect.querySelectorAll('[data-tier]').forEach((button) => {
+                    const tier = button.dataset.tier;
+                    button.disabled = !canSelectTier || isRolling || isAnswering || (oilSpillLocked && tier !== 'EASY');
+                });
             }
 
             const showQuestion = canAnswer || isPendingQuestion || (isMyTurn && turn
@@ -1534,6 +1550,30 @@
                     isRolling = false;
                     drawController();
                 });
+            });
+        }
+
+        if (tierSelect) {
+            tierSelect.addEventListener('click', function (event) {
+                const button = event.target.closest('[data-tier]');
+                if (!button || button.disabled || isRolling) {
+                    return;
+                }
+
+                isRolling = true;
+                drawController();
+                runtime.setError('');
+
+                jsonFetch('/api/v1/rooms/' + config.roomUuid + '/select-tier', {
+                    method: 'POST',
+                    body: JSON.stringify({team_uuid: activeTeamUuid(), tier: button.dataset.tier}),
+                })
+                    .then(runtime.refresh)
+                    .catch((error) => runtime.setError(error.message))
+                    .finally(() => {
+                        isRolling = false;
+                        drawController();
+                    });
             });
         }
 

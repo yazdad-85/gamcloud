@@ -28,6 +28,11 @@
         </div>
     </div>
         <button class="button roll-button" data-roll type="button">Lempar Dadu</button>
+        <div class="tier-select hidden" data-tier-select>
+            <button class="button tier-button" data-tier="EASY" type="button">EASY <span>+1</span></button>
+            <button class="button tier-button" data-tier="MEDIUM" type="button">MEDIUM <span>+2</span></button>
+            <button class="button tier-button" data-tier="HARD" type="button">HARD <span>+3</span></button>
+        </div>
     </div>
 
     <div class="panel hidden" data-question>

@@ -2939,6 +2939,26 @@ textarea {
     width: 100%;
 }
 
+.tier-select {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.tier-button {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-height: 54px;
+}
+
+.tier-button span {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
 @keyframes diceShake {
     0% {
         transform: rotate(0deg) translate(0, 0);
