@@ -142,6 +142,10 @@ class GameEngine
             throw new DomainException('Room sudah tidak menerima tim baru.');
         }
 
+        if (($room['participation_mode'] ?? 'TEAM_DEVICE') === 'TEACHER_CENTRALIZED') {
+            throw new DomainException('Room ini memakai Mode Tanpa Device — ikuti permainan dari layar guru di depan kelas, tidak perlu join PIN.');
+        }
+
         $result = $this->insertTeamIntoRoom($room, $teamName, $avatar);
 
         return $result + ['snapshot' => $this->snapshot($result['room']['public_uuid'])];

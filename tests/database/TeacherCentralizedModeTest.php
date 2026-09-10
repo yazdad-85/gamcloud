@@ -64,9 +64,8 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
         $room = $engine->createRoom(1, 'Auth Bypass Test', [
             'participation_mode' => 'TEACHER_CENTRALIZED',
         ])['room'];
-        $team = $engine->joinByPin($room['pin'], 'Tim Otorisasi')['team'];
-
         $this->actingAsTeacherOwner(1);
+        $team = $engine->addTeamByOwner($room['uuid'], 'Tim Otorisasi')['team'];
 
         $asserted = (new TeamSessionService())->assertTeamSession($room['uuid'], $team['public_uuid']);
         $this->assertSame($team['public_uuid'], $asserted['public_uuid']);
@@ -104,7 +103,8 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
         $room = $engine->createRoom(1, 'Auth Bypass Foreign Test', [
             'participation_mode' => 'TEACHER_CENTRALIZED',
         ])['room'];
-        $team = $engine->joinByPin($room['pin'], 'Tim Punya Guru Lain')['team'];
+        $this->actingAsTeacherOwner(1);
+        $team = $engine->addTeamByOwner($room['uuid'], 'Tim Punya Guru Lain')['team'];
 
         $otherTeacherId = (new TeacherModel())->insert([
             'public_uuid' => Uuid::v4(),
@@ -112,6 +112,7 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
             'email' => 'guru-lain-' . bin2hex(random_bytes(4)) . '@example.test',
             'role' => 'teacher',
         ], true);
+        auth('session')->logout();
         $this->actingAsTeacherOwner($otherTeacherId);
 
         $this->expectException(DomainException::class);
@@ -174,6 +175,18 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
 
         $roomRow = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first();
         $this->assertSame(0, (new GameTeamModel())->where('room_id', $roomRow['id'])->countAllResults());
+    }
+
+    public function testJoinByPinRejectsCentralizedRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Join Rejected Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+        ])['room'];
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('layar guru');
+        $engine->joinByPin($room['pin'], 'Tim Nekat Join');
     }
 
     private function actingAsTeacherOwner(int $teacherId): void
