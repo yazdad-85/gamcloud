@@ -446,22 +446,46 @@
             : '';
     }
 
+    let previousNearFinishChecked = null;
+    let previousParticipationMode = null;
+
     function applyModeVisibility() {
         const isRace = currentGameMode() === 'QUIZ_RACE';
         raceOnlyFields.forEach((field) => field.classList.toggle('hidden', !isRace));
         snakesOnlyFields.forEach((field) => field.classList.toggle('hidden', isRace));
+
         if (nearFinishCheckbox) {
-            nearFinishCheckbox.disabled = isRace;
             if (isRace) {
+                if (!nearFinishCheckbox.disabled) {
+                    previousNearFinishChecked = nearFinishCheckbox.checked;
+                }
+                nearFinishCheckbox.disabled = true;
                 nearFinishCheckbox.checked = false;
+            } else {
+                nearFinishCheckbox.disabled = false;
+                if (previousNearFinishChecked !== null) {
+                    nearFinishCheckbox.checked = previousNearFinishChecked;
+                    previousNearFinishChecked = null;
+                }
             }
         }
-        if (teamDeviceRadio) {
-            teamDeviceRadio.disabled = isRace;
-            if (isRace && teamDeviceRadio.checked && centralizedRadio) {
-                centralizedRadio.checked = true;
+
+        if (teamDeviceRadio && centralizedRadio) {
+            if (isRace) {
+                if (!teamDeviceRadio.disabled && teamDeviceRadio.checked) {
+                    previousParticipationMode = 'TEAM_DEVICE';
+                    centralizedRadio.checked = true;
+                }
+                teamDeviceRadio.disabled = true;
+            } else {
+                teamDeviceRadio.disabled = false;
+                if (previousParticipationMode === 'TEAM_DEVICE') {
+                    teamDeviceRadio.checked = true;
+                    previousParticipationMode = null;
+                }
             }
         }
+
         updateRaceBankNote();
     }
 
@@ -469,6 +493,10 @@
     if (trackLengthInput) {
         trackLengthInput.addEventListener('input', updateRaceBankNote);
     }
+    // updateRaceBankNote() reads the topic checkboxes' checked state, but relies on the
+    // existing topic-selection script's 'change' listener (on optionsContainer, an ancestor
+    // of the checkboxes) running first via DOM event-bubbling order to redraw totals — if the
+    // topic checkboxes are ever moved outside optionsContainer, this will silently go stale.
     document.addEventListener('change', function (event) {
         if (event.target && event.target.name === 'question_topic_uuids[]') {
             updateRaceBankNote();
