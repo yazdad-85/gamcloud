@@ -65,7 +65,7 @@
 
     function specialTileClass(type) {
         const value = String(type || '').toLowerCase();
-        return ['bonus', 'trap', 'safe', 'mystery', 'duel'].includes(value) ? value : 'normal';
+        return ['bonus', 'boost', 'trap', 'oil_spill', 'safe', 'mystery', 'duel'].includes(value) ? value : 'normal';
     }
 
     function specialTileLabel(tile) {
@@ -76,8 +76,12 @@
         switch (String(tile.type || '').toUpperCase()) {
             case 'BONUS':
                 return 'Bonus';
+            case 'BOOST':
+                return 'Boost';
             case 'TRAP':
                 return 'Trap';
+            case 'OIL_SPILL':
+                return 'Oil Spill';
             case 'SAFE':
                 return 'Safe';
             case 'MYSTERY':
@@ -103,6 +107,12 @@
         applyBoardTheme(element, snapshot.board && snapshot.board.theme);
 
         const renderer = snapshot.mode_state && snapshot.mode_state.renderer || 'snakes_ladders_board';
+        element.classList.toggle('is-race-track', renderer === 'quiz_race_track');
+        if (renderer === 'quiz_race_track') {
+            renderRaceTrack(element, snapshot);
+            return;
+        }
+
         if (renderer !== 'snakes_ladders_board') {
             element.innerHTML = '<div class="mode-placeholder">' +
                 '<strong>' + escapeHtml(snapshot.mode_state && snapshot.mode_state.label || 'Mode Game') + '</strong>' +
@@ -149,6 +159,72 @@
             '<div class="board-grid">' + tiles + '</div>' +
             '<svg class="board-path-layer" data-board-paths aria-hidden="true"></svg>';
         window.requestAnimationFrame(() => renderBoardPaths(element, snapshot));
+    }
+
+    function renderRaceTrack(element, snapshot) {
+        const board = snapshot.board || {};
+        const total = Math.max(1, Number((snapshot.room && snapshot.room.max_position) || board.tile_count || 24) || 24);
+        const teams = snapshot.teams || [];
+        const currentTeamUuid = snapshot.room && snapshot.room.current_team_uuid;
+        const recentMovement = latestMovement(snapshot);
+        const minWidth = Math.max(760, total * 34);
+        const teamsByPosition = {};
+
+        teams.forEach((team) => {
+            const position = effectivePosition(team);
+            teamsByPosition[position] = teamsByPosition[position] || [];
+            teamsByPosition[position].push(team);
+        });
+
+        const cells = Array.from({length: total}, (_, index) => {
+            const tile = index + 1;
+            const special = (board.special_tiles || []).find((item) => Number(item.tile) === tile);
+            const isCurrent = (teamsByPosition[tile] || []).some((team) => team.uuid === currentTeamUuid);
+            const classes = [
+                'race-cell',
+                tile === 1 ? 'race-cell-start' : '',
+                tile === total ? 'race-cell-finish' : '',
+                special ? 'race-cell-special race-cell-' + specialTileClass(special.type) : '',
+                isCurrent ? 'race-cell-current' : '',
+                recentMovement && (recentMovement.from === tile || recentMovement.to === tile || recentMovement.landed === tile) ? 'race-cell-recent' : '',
+            ].filter(Boolean).join(' ');
+
+            return '<div class="' + classes + '" data-tile="' + tile + '">' +
+                '<span class="race-cell-number">' + tile + '</span>' +
+                (special ? '<span class="race-cell-badge">' + escapeHtml(specialTileLabel(special)) + '</span>' : '') +
+            '</div>';
+        }).join('');
+
+        const lanes = teams.map((team) => {
+            const position = Math.max(1, Math.min(total, effectivePosition(team)));
+            const percent = total > 1 ? ((position - 1) / (total - 1)) * 100 : 0;
+            const isCurrent = team.uuid === currentTeamUuid;
+
+            return '<div class="race-lane ' + (isCurrent ? 'is-current' : '') + '">' +
+                '<div class="race-lane-team">' +
+                    '<span class="pawn pawn-token avatar-' + avatarClass(team.avatar) + '" style="--team-color:' + escapeHtml(team.color) + '; background:' + escapeHtml(team.color) + '"><span>' + escapeHtml(teamInitials(team.name)) + '</span></span>' +
+                    '<strong>' + escapeHtml(team.name) + '</strong>' +
+                '</div>' +
+                '<div class="race-lane-road" style="--race-position:' + percent.toFixed(3) + '%; --team-color:' + escapeHtml(team.color) + '">' +
+                    '<div class="race-lane-progress"></div>' +
+                    '<span class="race-pawn pawn pawn-token avatar-' + avatarClass(team.avatar) + (isCurrent ? ' active-pawn' : '') + '" style="--team-color:' + escapeHtml(team.color) + '; background:' + escapeHtml(team.color) + '"><span>' + escapeHtml(teamInitials(team.name)) + '</span></span>' +
+                '</div>' +
+                '<div class="race-lane-position">Kotak ' + position + '</div>' +
+            '</div>';
+        }).join('');
+
+        element.innerHTML = '<div class="board-atmosphere" aria-hidden="true"></div>' +
+            '<div class="race-track" style="--race-min-width:' + minWidth + 'px">' +
+                '<div class="race-track-head">' +
+                    '<span>START</span>' +
+                    '<strong>' + escapeHtml(snapshot.mode_state && snapshot.mode_state.label || 'Quiz Race') + '</strong>' +
+                    '<span>FINISH</span>' +
+                '</div>' +
+                '<div class="race-track-scroll">' +
+                    '<div class="race-scale" style="--race-tiles:' + total + '">' + cells + '</div>' +
+                    '<div class="race-lanes">' + (lanes || '<p class="muted">Belum ada tim.</p>') + '</div>' +
+                '</div>' +
+            '</div>';
     }
 
     const THEME_ICON_SHAPES = {
@@ -353,11 +429,15 @@
             const badges = [];
             const streak = Number(team.streak_count || 0);
             const shield = Number(team.active_effects && team.active_effects.safe_shield || 0);
+            const oilSpillLocked = Boolean(team.active_effects && team.active_effects.oil_spill_lock);
             if (streak >= 2) {
                 badges.push('Streak x' + streak);
             }
             if (shield > 0) {
                 badges.push('Perisai ' + shield);
+            }
+            if (oilSpillLocked) {
+                badges.push('Oil Spill');
             }
 
             return '<div class="leader-row">' +
@@ -438,6 +518,10 @@
                                 ? ' Mendapat perisai aman.'
                                 : movement.special === 'MYSTERY'
                                     ? ' Tile misteri aktif.'
+                                    : movement.special === 'BOOST'
+                                        ? ' Boost aktif, maju ke kotak ' + movement.to + '.'
+                                        : movement.special === 'OIL_SPILL'
+                                            ? ' Oil Spill aktif, giliran berikutnya hanya EASY.'
                 : '';
 
         return (payload.is_correct ? 'Jawaban benar.' : 'Jawaban belum tepat.') + bounce + suffix + scoreBreakdownLabel(payload.score_breakdown);
@@ -471,8 +555,14 @@
         if (type === 'BONUS') {
             return 'Bonus tile: +' + Number(effect.points || 0) + ' poin.';
         }
+        if (type === 'BOOST') {
+            return 'Boost: ' + team + ' maju +' + Number(effect.steps || 2) + ' langkah.';
+        }
         if (type === 'TRAP') {
             return 'Trap tile: mundur ke kotak ' + Number(effect.to || 1) + '.';
+        }
+        if (type === 'OIL_SPILL') {
+            return 'Oil Spill: ' + team + ' hanya bisa pilih EASY pada giliran berikutnya.';
         }
         if (type === 'SAFE') {
             return 'Perisai aman didapat.';
@@ -964,6 +1054,12 @@
         if (movement.special === 'TRAP') {
             return {tone: 'danger', body: 'Trap aktif, mundur ke kotak ' + movement.to};
         }
+        if (movement.special === 'BOOST') {
+            return {tone: 'success', body: 'Boost aktif, melaju ke kotak ' + movement.to};
+        }
+        if (movement.special === 'OIL_SPILL') {
+            return {tone: 'danger', body: 'Oil Spill aktif, giliran berikutnya hanya EASY'};
+        }
         return null;
     }
 
@@ -1023,8 +1119,14 @@
         if (type === 'BONUS') {
             return {tone: 'success', title: 'Bonus Tile', body: team + ' +' + Number(effect.points || 0)};
         }
+        if (type === 'BOOST') {
+            return {tone: 'success', title: 'Boost', body: team + ' +' + Number(effect.steps || 2) + ' langkah'};
+        }
         if (type === 'TRAP') {
             return {tone: 'danger', title: 'Trap Tile', body: team + ' mundur ke ' + Number(effect.to || 1)};
+        }
+        if (type === 'OIL_SPILL') {
+            return {tone: 'danger', title: 'Oil Spill', body: team + ' terkunci ke EASY'};
         }
         if (type === 'SAFE') {
             return {tone: 'info', title: 'Perisai Aman', body: team + ' punya pelindung'};
@@ -1152,9 +1254,9 @@
             return;
         }
 
-        const effect = special === 'SNAKE' || special === 'TRAP'
+        const effect = special === 'SNAKE' || special === 'TRAP' || special === 'OIL_SPILL'
             ? 'tile-shake'
-            : special === 'LADDER' || special === 'BONUS' || special === 'SAFE' || special === 'SAFE_BLOCK' || special === 'MYSTERY' || special === 'DUEL'
+            : special === 'LADDER' || special === 'BONUS' || special === 'BOOST' || special === 'SAFE' || special === 'SAFE_BLOCK' || special === 'MYSTERY' || special === 'DUEL'
                 ? 'tile-glow'
                 : 'tile-arrived';
         tile.classList.add(effect);
@@ -1286,7 +1388,7 @@
                     }
                 } else if (event.event === 'tile.special_triggered') {
                     const effectType = String((payload.effect || {}).type || '').toUpperCase();
-                    if (effectType === 'BONUS' || effectType === 'SAFE' || effectType === 'SAFE_BLOCK') {
+                    if (effectType === 'BONUS' || effectType === 'BOOST' || effectType === 'SAFE' || effectType === 'SAFE_BLOCK' || effectType === 'OIL_SPILL') {
                         const overlay = specialOverlay(payload.effect || {}, payload.team_uuid, snapshot);
                         showMoveFeedback(overlay.body, overlay.tone);
                     }
@@ -1347,6 +1449,8 @@
 
             drawDiceState(snapshot, turn, {
                 canRoll,
+                canSelectTier,
+                isQuizRace,
                 canAnswer,
                 timeExpired,
                 currentTeamName: current ? current.name : 'tim lain',
@@ -1446,15 +1550,22 @@
                 dicePanel.classList.toggle('ready', Boolean(state.canRoll));
                 dicePanel.classList.toggle('rolling', isRolling);
                 dicePanel.classList.toggle('question-active', Boolean(state.canAnswer));
+                dicePanel.classList.toggle('race-choice', Boolean(state.isQuizRace));
             }
 
             if (diceDisplay && !isRolling) {
-                GameFx.setDieResting(diceDisplay, turn && turn.dice_value ? Number(turn.dice_value) : null);
+                if (state.isQuizRace) {
+                    diceDisplay.textContent = 'QR';
+                } else {
+                    GameFx.setDieResting(diceDisplay, turn && turn.dice_value ? Number(turn.dice_value) : null);
+                }
             }
 
             if (diceCaption) {
                 if (isRolling) {
-                    diceCaption.textContent = 'Dadu sedang dikocok';
+                    diceCaption.textContent = state.isQuizRace ? 'Menyiapkan soal' : 'Dadu sedang dikocok';
+                } else if (state.canSelectTier) {
+                    diceCaption.textContent = 'Pilih tingkat soal';
                 } else if (state.canRoll) {
                     diceCaption.textContent = 'Siap lempar';
                 } else if (turn && (turn.state === 'QUESTION_PENDING_START' || turn.state === 'MYSTERY_QUESTION_PENDING_START')) {
@@ -1496,6 +1607,19 @@
 
             if (state.canRoll) {
                 return 'Tekan tombol untuk membuka pertanyaan.';
+            }
+
+            if (state.canSelectTier) {
+                return 'Pilih EASY, MEDIUM, atau HARD untuk membuka pertanyaan.';
+            }
+
+            if (snapshot.mode_state && snapshot.mode_state.key === 'QUIZ_RACE' && modeCan(snapshot, 'select_tier')) {
+                if (turn.state === 'ROLL_READY') {
+                    return 'Menunggu giliran ' + state.currentTeamName + ' memilih tingkat soal.';
+                }
+                if (turn.state === 'QUESTION_PENDING_START') {
+                    return 'Tekan Mulai Waktu Jawab setelah soal selesai dibacakan.';
+                }
             }
 
             if (!modeCan(snapshot, 'roll')) {
