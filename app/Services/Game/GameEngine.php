@@ -387,6 +387,33 @@ class GameEngine
         return $this->snapshot($roomUuid);
     }
 
+    public function startAnswerTimer(string $roomUuid): array
+    {
+        $room = (new TenantContext())->assertRoomOwner($roomUuid);
+        $this->assertRoomNotExpired($room, 'Room sudah kedaluwarsa.');
+
+        $turn = $this->activeTurn((int) $room['id']);
+        $pendingStates = ['QUESTION_PENDING_START', 'MYSTERY_QUESTION_PENDING_START'];
+        if ($turn === null || ! in_array($turn['state'], $pendingStates, true)) {
+            throw new DomainException('Tidak ada soal yang menunggu waktu jawab dimulai.');
+        }
+
+        $nextState = $turn['state'] === 'QUESTION_PENDING_START'
+            ? 'QUESTION_ACTIVE'
+            : 'MYSTERY_QUESTION_ACTIVE';
+        $now = date('Y-m-d H:i:s');
+        $deadline = date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']);
+
+        (new GameTurnModel())->update($turn['id'], [
+            'state' => $nextState,
+            'question_started_at' => $now,
+            'question_deadline_at' => $deadline,
+        ]);
+        $this->bumpRoom((int) $room['id']);
+
+        return $this->snapshot($roomUuid);
+    }
+
     public function roll(string $roomUuid, string $teamUuid, ?string $idempotencyKey = null): array
     {
         $room = $this->roomByUuid($roomUuid);

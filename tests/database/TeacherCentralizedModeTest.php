@@ -244,6 +244,67 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
         $engine->answer($room['uuid'], $team['public_uuid'], $optionId);
     }
 
+    public function testStartAnswerTimerActivatesPendingQuestion(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Start Timer Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = $engine->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        $engine->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+        $engine->roll($room['uuid'], $team['public_uuid']);
+
+        $snapshot = $engine->startAnswerTimer($room['uuid']);
+
+        $this->assertSame('QUESTION_ACTIVE', $snapshot['current_turn']['state']);
+        $this->assertNotNull($snapshot['current_turn']['deadline_at']);
+    }
+
+    public function testStartAnswerTimerRejectsWhenNoPendingQuestion(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Start Timer Reject Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $engine->addTeamByOwner($room['uuid'], 'Tim Satu');
+        $engine->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+
+        $this->expectException(DomainException::class);
+        $engine->startAnswerTimer($room['uuid']);
+    }
+
+    public function testStartAnswerTimerRejectsNonOwner(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Start Timer Owner Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $this->actingAsTeacherOwner(1);
+        $team = $engine->addTeamByOwner($room['uuid'], 'Tim Satu')['team'];
+        $engine->addTeamByOwner($room['uuid'], 'Tim Dua');
+        $engine->start($room['uuid']);
+        $engine->roll($room['uuid'], $team['public_uuid']);
+
+        $otherTeacherId = (new TeacherModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'name' => 'Guru Lain Timer',
+            'email' => 'guru-lain-timer-' . bin2hex(random_bytes(4)) . '@example.test',
+            'role' => 'teacher',
+        ], true);
+        auth('session')->logout();
+        $this->actingAsTeacherOwner($otherTeacherId);
+
+        $this->expectException(\CodeIgniter\Exceptions\PageNotFoundException::class);
+        $engine->startAnswerTimer($room['uuid']);
+    }
+
     private function roomId(string $roomUuid): int
     {
         $room = (new GameRoomModel())->where('public_uuid', $roomUuid)->first();
