@@ -129,6 +129,8 @@ class Filters extends BaseFilters
                 'api/v1/rooms/*/resume',
                 'api/v1/rooms/*/skip-turn',
                 'api/v1/rooms/*/force-timeout',
+                'api/v1/rooms/*/teams',
+                'api/v1/rooms/*/teams/*/remove',
             ],
         ],
         'rateLimit:20,60,auth-login' => [
