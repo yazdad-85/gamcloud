@@ -28,6 +28,7 @@ class GameEngine
     private BaseConnection $db;
     private GameConfig $config;
     private GameModeCatalog $modes;
+    private RaceTrackService $race;
 
     public function __construct(
         private readonly RealtimeService $realtime = new RealtimeService()
@@ -35,6 +36,7 @@ class GameEngine
         $this->db = Database::connect();
         $this->config = config(GameConfig::class);
         $this->modes = new GameModeCatalog();
+        $this->race = new RaceTrackService();
     }
 
     public function createRoom(int $teacherId, string $title, array $options = []): array
@@ -43,26 +45,47 @@ class GameEngine
             $this->assertTeacherRoomQuota($teacherId);
         }
 
+        $gameModeKey = $this->validOption(strtoupper((string) ($options['game_mode'] ?? 'SNAKES_LADDERS')), $this->modes->playableKeys(), 'SNAKES_LADDERS');
+        $gameMode = $this->modes->resolve($gameModeKey);
+        $participationMode = $this->validOption(
+            strtoupper((string) ($options['participation_mode'] ?? 'TEAM_DEVICE')),
+            ['TEAM_DEVICE', 'TEACHER_CENTRALIZED'],
+            'TEAM_DEVICE'
+        );
+        if ($gameModeKey === 'QUIZ_RACE' && $participationMode !== 'TEACHER_CENTRALIZED') {
+            throw new DomainException('Quiz Race saat ini hanya tersedia untuk Mode Tanpa Device (Terpusat).');
+        }
+
         $boards = new BoardTemplateModel();
         $boardTemplateId = (int) ($options['board_template_id'] ?? 0);
         $board = null;
         if ($boardTemplateId > 0) {
-            $board = $boards->where('id', $boardTemplateId)->where('status', 'ACTIVE')->first();
+            $board = $boards->where('id', $boardTemplateId)->where('status', 'ACTIVE')->where('game_mode', $gameModeKey)->first();
         }
-        $board ??= (new BoardTemplateModel())->where('status', 'ACTIVE')->first();
+        $board ??= (new BoardTemplateModel())->where('status', 'ACTIVE')->where('game_mode', $gameModeKey)->first();
         if ($board === null) {
             throw new DomainException('Board template belum tersedia. Jalankan seeder demo lebih dulu.');
         }
 
-        if (isset($options['board_size']) && in_array((int) $options['board_size'], [50, 70], true)) {
-            $board = $this->applyBoardSize($board, (int) $options['board_size']);
-        }
+        $finishRule = $this->validOption((string) ($options['finish_rule'] ?? 'clamp_finish'), ['clamp_finish', 'exact_finish'], 'clamp_finish');
+        $lapCount = 1;
 
-        if (isset($options['mystery_tile_count'])) {
-            $requestedMysteryCount = max(0, min(6, (int) $options['mystery_tile_count']));
-            $board = $this->applyMysteryTileCount($board, $requestedMysteryCount);
-            if ($this->specialTileCount($board, 'MYSTERY') !== $requestedMysteryCount) {
-                throw new DomainException('Konfigurasi Kotak Mystery gagal diterapkan. Room tidak dibuat.');
+        if ($gameModeKey === 'QUIZ_RACE') {
+            $trackLength = max(6, min(60, (int) ($options['track_length'] ?? 24)));
+            $board = $this->applyRaceTrackLength($board, $trackLength);
+            $lapCount = max(1, min(10, (int) ($options['lap_count'] ?? 5)));
+            $finishRule = 'clamp_finish';
+        } else {
+            if (isset($options['board_size']) && in_array((int) $options['board_size'], [50, 70], true)) {
+                $board = $this->applyBoardSize($board, (int) $options['board_size']);
+            }
+
+            if (isset($options['mystery_tile_count'])) {
+                $requestedMysteryCount = max(0, min(6, (int) $options['mystery_tile_count']));
+                $board = $this->applyMysteryTileCount($board, $requestedMysteryCount);
+                if ($this->specialTileCount($board, 'MYSTERY') !== $requestedMysteryCount) {
+                    throw new DomainException('Konfigurasi Kotak Mystery gagal diterapkan. Room tidak dibuat.');
+                }
             }
         }
 
@@ -70,8 +93,10 @@ class GameEngine
         $projectorToken = bin2hex(random_bytes(32));
         $now = date('Y-m-d H:i:s');
         $turnOrderMode = $this->validOption((string) ($options['turn_order_mode'] ?? 'random'), ['random', 'join_order'], 'random');
-        $finishRule = $this->validOption((string) ($options['finish_rule'] ?? 'clamp_finish'), ['clamp_finish', 'exact_finish'], 'clamp_finish');
         $scoring = $this->scoringRules($options['scoring'] ?? []);
+        if ($gameModeKey === 'QUIZ_RACE') {
+            $scoring['near_finish_bonus'] = false;
+        }
         $questionSelectionSource = is_array($options['question_selection'] ?? null)
             ? $options['question_selection']
             : [];
@@ -82,13 +107,6 @@ class GameEngine
             );
         }
         $questionSelection = $this->questionSelectionRules($questionSelectionSource, (int) $board['tile_count']);
-        $gameModeKey = $this->validOption(strtoupper((string) ($options['game_mode'] ?? 'SNAKES_LADDERS')), $this->modes->playableKeys(), 'SNAKES_LADDERS');
-        $gameMode = $this->modes->resolve($gameModeKey);
-        $participationMode = $this->validOption(
-            strtoupper((string) ($options['participation_mode'] ?? 'TEAM_DEVICE')),
-            ['TEAM_DEVICE', 'TEACHER_CENTRALIZED'],
-            'TEAM_DEVICE'
-        );
         $baseRoomState = [
             'max_position' => (int) $board['tile_count'],
         ];
@@ -106,6 +124,7 @@ class GameEngine
             'redemption_time_seconds' => $this->config->redemptionTime,
             'max_teams' => 6,
             'max_position' => (int) $board['tile_count'],
+            'lap_count' => $lapCount,
             'game_mode' => $gameMode->key(),
             'participation_mode' => $participationMode,
             'mode_state_json' => json_encode($gameMode->initialState($baseRoomState, $board), JSON_UNESCAPED_SLASHES),
@@ -2071,6 +2090,23 @@ class GameEngine
         return (new BoardTemplateModel())->find($newBoardId);
     }
 
+    private function applyRaceTrackLength(array $board, int $trackLength): array
+    {
+        $newBoardId = (new BoardTemplateModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'name' => $board['name'] . ' (' . $trackLength . ' Kotak)',
+            'game_mode' => 'QUIZ_RACE',
+            'tile_count' => $trackLength,
+            'ladders_json' => json_encode([], JSON_UNESCAPED_SLASHES),
+            'snakes_json' => json_encode([], JSON_UNESCAPED_SLASHES),
+            'special_tiles_json' => json_encode($this->race->generateTrackTiles($trackLength), JSON_UNESCAPED_SLASHES),
+            'theme_json' => $board['theme_json'],
+            'status' => 'ROOM_INSTANCE',
+        ], true);
+
+        return (new BoardTemplateModel())->find($newBoardId);
+    }
+
     private function applyMysteryTileCount(array $board, int $mysteryCount): array
     {
         $mysteryCount = max(0, min(6, $mysteryCount));
@@ -2185,6 +2221,7 @@ class GameEngine
             'current_team_uuid' => $this->currentTeamUuid($room),
             'question_time_seconds' => (int) $room['question_time_seconds'],
             'max_position' => (int) $room['max_position'],
+            'lap_count' => (int) ($room['lap_count'] ?? 1),
             'game_mode' => $room['game_mode'] ?? 'SNAKES_LADDERS',
             'participation_mode' => $room['participation_mode'] ?? 'TEAM_DEVICE',
             'turn_order_mode' => $room['turn_order_mode'] ?? 'random',

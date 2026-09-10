@@ -35,6 +35,36 @@ final class QuizRaceModeTest extends CIUnitTestCase
         $this->assertTrue($mode->isPlayable());
     }
 
+    public function testCreateRoomWithQuizRaceUsesRaceBoardAndAppliesTrackLength(): void
+    {
+        $engine = new GameEngine();
+        $snapshot = $engine->createRoom(1, 'Quiz Race Track Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'track_length' => 18,
+            'lap_count' => 3,
+        ]);
+
+        $this->assertSame('QUIZ_RACE', $snapshot['room']['game_mode']);
+        $this->assertSame(18, $snapshot['room']['max_position']);
+        $this->assertSame(3, $snapshot['room']['lap_count']);
+        $this->assertSame('clamp_finish', $snapshot['room']['finish_rule']);
+        $this->assertSame([], $snapshot['board']['ladders']);
+        $this->assertSame([], $snapshot['board']['snakes']);
+    }
+
+    public function testCreateRoomRejectsQuizRaceWithTeamDeviceParticipation(): void
+    {
+        $engine = new GameEngine();
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Tanpa Device');
+        $engine->createRoom(1, 'Quiz Race Reject Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+        ]);
+    }
+
     private function actingAsTeacherOwner(int $teacherId): void
     {
         $users = model(UserModel::class);
