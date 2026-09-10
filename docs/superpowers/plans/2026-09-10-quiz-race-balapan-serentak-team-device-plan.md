@@ -1,266 +1,243 @@
-# Quiz Race - Balapan Serentak Device per Tim Implementation Plan
+# Quiz Race - Balapan Serentak Multi-Ronde Device per Tim Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Enable `QUIZ_RACE` for `TEAM_DEVICE` rooms as Balapan Serentak: every team joins with PIN, receives the same question in each shared round, answers once from its own device, and all team movement resolves together.
+**Goal:** Enable `QUIZ_RACE + TEAM_DEVICE` as a simultaneous race with multiple rounds, multiple shared question cycles per round, score-only round prizes, and immediate game finish when a question resolution puts a team on the finish line.
 
-**Architecture:** Keep Phase 11 intact. Do not reuse `game_turns` for simultaneous play. Add `game_rounds` and `game_round_answers`, a small `RaceRoundService` for pure round-resolution logic, and new `GameEngine` methods for round start/answer/resolve. Shared rounds use atomic state transitions (`ROUND_ACTIVE -> ROUND_RESOLVING -> ROUND_RESOLVED -> ROUND_CLOSED`) so answer, polling, and teacher force-resolve cannot apply movement twice. `TEACHER_CENTRALIZED` keeps using `selectDifficultyTier()` and `answer()` unchanged except for genuinely shared helpers and regression fixes.
+**Architecture:** Keep Phase 11 centralized play intact. Add macro rounds (`game_rounds`), question cycles inside rounds (`game_round_questions`), and one answer per team per question cycle (`game_round_answers`). `RaceRoundService` owns allocation/difficulty/round ranking; `RaceQuestionService` owns pure simultaneous movement. Atomic question-state transitions prevent duplicate answer or resolution effects.
 
-**Tech Stack:** PHP 8 / CodeIgniter 4, SQLite/MySQL-compatible migrations, vanilla JS (`public/assets/app.js`), PHPUnit with `DatabaseTestTrait` for engine/database behavior and `CIUnitTestCase` for pure service behavior.
+**Confirmed product rules:**
+
+- A round contains multiple questions. Default allocation is `[15, 15, 20]`.
+- One question cycle presents the same question to all teams.
+- Correct movement is `+1`; fastest correct gets another `+2`.
+- A completed round awards score only, default `+100`, to its round winner.
+- Reaching `max_position` ends the race immediately, even mid-round and before all 50 questions are used.
+- A round interrupted by race finish gives no round-completion prize.
+
+**Tech Stack:** PHP 8 / CodeIgniter 4, SQLite/MySQL-compatible migrations, vanilla JS (`public/assets/app.js`), PHPUnit database/unit/feature tests.
 
 ---
 
 ## Before You Start
 
 - Working directory: `/Users/mbp19/Documents/YAZDAD/APLIKASI PRODUKSI/games/ular-tangga`.
-- Run the full suite with `./vendor/bin/phpunit`.
-- Read first:
-  - `docs/superpowers/specs/2026-09-10-quiz-race-team-device-design.md`
-  - `docs/superpowers/plans/2026-09-10-quiz-race-sprint-tanpa-dadu-plan.md`
-- Phase 11 is the baseline. Do not remove or rewrite:
-  - `GameEngine::selectDifficultyTier()`
-  - `GameEngine::answer()` Quiz Race branch for `TEACHER_CENTRALIZED`
-  - `RaceTrackService::movementForTierAnswer()`
-  - Create Game race track fields
-- Every new persisted field must be in the matching model's `$allowedFields`.
+- Read `docs/superpowers/specs/2026-09-10-quiz-race-team-device-design.md` completely.
+- Read `docs/superpowers/plans/2026-09-10-quiz-race-sprint-tanpa-dadu-plan.md` for Phase 11 conventions.
+- Run `./vendor/bin/phpunit` and keep the baseline green.
+- Do not remove or rewrite centralized `selectDifficultyTier()` and Quiz Race `answer()` behavior.
+- Every persisted field must be present in the corresponding model `$allowedFields`.
+- Use server epoch milliseconds for race timing; do not reuse the current second-resolution `responseMs()` helper.
 
-## Scope for This Plan
+## Scope
 
 **In scope:**
 
-- Allow `QUIZ_RACE + TEAM_DEVICE` room creation.
-- Reuse Quiz Race track length, lap count, race board templates, Boost/Oil Spill tile generation, and bank soal/topik selection.
-- New shared round tables and models.
-- Shared question per round.
-- Device-team answer once per round.
-- Correct +1, fastest correct +2.
-- Boost +2, Oil Spill removes speed-bonus eligibility for next round, checkpoint +1.
-- Automatic next round creation after resolve if no team finished.
-- Teacher Control panel can monitor and force-resolve a round.
-- Team controller can answer the active shared round.
-- A short resolved-result phase before the next question becomes answerable.
-- Millisecond server timing, concurrency-safe resolution, and duplicate-submit handling.
-- Pause/resume behavior for shared deadlines.
-- Existing question reuse protection, room deletion, and reports understand round data.
-- Co-winner support when multiple teams finish in the same resolution.
+- Enable `QUIZ_RACE + TEAM_DEVICE` creation and PIN join.
+- Configurable 1-5 rounds with a default 15/15/20 question allocation.
+- Balanced persisted EASY/MEDIUM/HARD schedule in each round.
+- Shared question/deadline and one answer per team per question cycle.
+- Per-question movement, Boost, Oil Spill, score, and immediate finish detection.
+- Round checkpoint, round standings, and score-only round prize.
+- Question-limit fallback winner when nobody reaches finish.
+- Atomic submit/resolve/advance behavior.
+- Result/reconnect snapshots, team controller, teacher control, and projector.
+- Pause/resume, reports, question protection, room deletion, and regression coverage.
 
 **Out of scope:**
 
-- Nitro.
-- Pit Stop.
-- Duel Susul.
-- Custom animated lane renderer.
-- Multi-room tournament/season leaderboard.
+- Nitro, Pit Stop, and Duel Susul.
+- Tournament or leaderboard across rooms.
+- Full custom track/theme editor.
+- Reworking centralized Quiz Race mechanics.
 
 ---
 
-## Task 1: Schema - Shared Race Rounds
+## Task 1: Schema and Models for Multi-Round Race
 
 **Files:**
 
-- Create: `app/Database/Migrations/2026-09-10-000005_CreateGameRounds.php`
-- Create: `app/Database/Migrations/2026-09-10-000006_CreateGameRoundAnswers.php`
+- Create: `app/Database/Migrations/2026-09-10-000005_AddQuizRaceRoundConfigToGameRooms.php`
+- Create: `app/Database/Migrations/2026-09-10-000006_CreateGameRounds.php`
+- Create: `app/Database/Migrations/2026-09-10-000007_CreateGameRoundQuestions.php`
+- Create: `app/Database/Migrations/2026-09-10-000008_CreateGameRoundAnswers.php`
+- Modify: `app/Models/GameRoomModel.php`
 - Create: `app/Models/GameRoundModel.php`
+- Create: `app/Models/GameRoundQuestionModel.php`
 - Create: `app/Models/GameRoundAnswerModel.php`
 
-- [ ] **Step 1: Create `game_rounds` migration**
+- [ ] **Step 1: Add room configuration columns**
+
+Add nullable columns so existing rooms remain valid:
+
+- `race_question_limit` integer.
+- `race_round_question_counts_json` text.
+- `race_round_winner_bonus_points` integer.
+
+Add all three to `GameRoomModel::$allowedFields`.
+
+- [ ] **Step 2: Create `game_rounds`**
 
 Columns:
 
-- `id` integer primary auto increment
-- `public_uuid` varchar(36)
-- `room_id` integer
-- `round_number` integer
-- `state` varchar(30), default `ROUND_ACTIVE`
-- `question_id` integer
-- `difficulty` varchar(20)
-- `answer_count` integer default 0
-- `started_at` datetime nullable
-- `started_at_epoch_ms` bigint nullable
-- `deadline_at` datetime nullable
-- `deadline_epoch_ms` bigint nullable
-- `paused_remaining_ms` integer nullable
-- `resolved_at` datetime nullable
-- `reveal_until` datetime nullable
-- `reveal_until_epoch_ms` bigint nullable
-- `fastest_team_ids_json` text nullable
-- `winner_team_ids_json` text nullable
-- `movement_summary_json` text nullable
-- `created_at` datetime nullable
-- `updated_at` datetime nullable
+- `id`, auto-increment primary key.
+- `public_uuid` varchar(36).
+- `room_id` integer.
+- `round_number` integer.
+- `state` varchar(30), default `ROUND_ACTIVE`.
+- `question_target_count` integer.
+- `question_resolved_count` integer, default 0.
+- `difficulty_schedule_json` text.
+- `round_winner_team_ids_json` text nullable.
+- `round_score_summary_json` text nullable.
+- `started_at`, `completed_at`, `reveal_until` datetime nullable.
+- `reveal_until_epoch_ms` bigint nullable.
+- `paused_remaining_ms` integer nullable.
+- `created_at`, `updated_at` datetime nullable.
 
 Indexes:
 
-- Unique `public_uuid`
-- Unique `room_id, round_number`
-- Index `room_id, state`
+- Unique `public_uuid`.
+- Unique `room_id, round_number`.
+- Index `room_id, state`.
 
-- [ ] **Step 2: Create `game_round_answers` migration**
+- [ ] **Step 3: Create `game_round_questions`**
 
 Columns:
 
-- `id` integer primary auto increment
-- `public_uuid` varchar(36)
-- `round_id` integer
-- `team_id` integer
-- `question_id` integer
-- `option_id` integer nullable
-- `answer_text` text nullable
-- `is_correct` integer default 0
-- `outcome` varchar(20), one of `CORRECT`, `WRONG`, `TIMEOUT`
-- `answered_at` datetime nullable
-- `answered_at_epoch_ms` bigint nullable
-- `response_ms` integer nullable
-- `created_at` datetime nullable
+- `id`, `public_uuid`, `round_id`, `question_number`.
+- `question_id`, `difficulty`.
+- `state` varchar(30), default `QUESTION_ACTIVE`.
+- `answer_count` integer, default 0.
+- `started_at`, `started_at_epoch_ms`.
+- `deadline_at`, `deadline_epoch_ms`.
+- `paused_remaining_ms` integer nullable.
+- `resolved_at`, `reveal_until`, `reveal_until_epoch_ms` nullable.
+- `fastest_team_ids_json`, `finisher_team_ids_json`, `movement_summary_json` nullable.
+- `created_at`, `updated_at`.
 
 Indexes:
 
-- Unique `public_uuid`
-- Unique `round_id, team_id`
-- Index `round_id, is_correct, response_ms`
+- Unique `public_uuid`.
+- Unique `round_id, question_number`.
+- Index `round_id, state`.
+- Index `question_id`.
 
-Use explicit application cleanup rather than adding cascade foreign keys in this phase, matching the existing schema style. Still add ordinary indexes for `room_id`, `question_id`, `round_id`, and `team_id` where the compound indexes do not cover the query direction.
+- [ ] **Step 4: Create `game_round_answers`**
 
-- [ ] **Step 3: Create the two models**
+Columns:
 
-`GameRoundModel` allowed fields:
+- `id`, `public_uuid`, `round_question_id`, `team_id`, `question_id`.
+- `option_id` integer nullable.
+- `answer_text` text nullable.
+- `is_correct` integer, default 0.
+- `outcome` varchar(20): `CORRECT`, `WRONG`, or `TIMEOUT`.
+- `answered_at`, `answered_at_epoch_ms`, `response_ms` nullable.
+- `score_delta` integer, default 0.
+- `score_breakdown_json` text nullable.
+- `created_at`, `updated_at` nullable.
 
-```php
-[
-    'public_uuid',
-    'room_id',
-    'round_number',
-    'state',
-    'question_id',
-    'difficulty',
-    'answer_count',
-    'started_at',
-    'started_at_epoch_ms',
-    'deadline_at',
-    'deadline_epoch_ms',
-    'paused_remaining_ms',
-    'resolved_at',
-    'reveal_until',
-    'reveal_until_epoch_ms',
-    'fastest_team_ids_json',
-    'winner_team_ids_json',
-    'movement_summary_json',
-]
-```
+Indexes:
 
-`GameRoundAnswerModel` allowed fields:
+- Unique `public_uuid`.
+- Unique `round_question_id, team_id`.
+- Index `round_question_id, is_correct, response_ms`.
+- Index `team_id` and `question_id`.
 
-```php
-[
-    'public_uuid',
-    'round_id',
-    'team_id',
-    'question_id',
-    'option_id',
-    'answer_text',
-    'is_correct',
-    'outcome',
-    'answered_at',
-    'answered_at_epoch_ms',
-    'response_ms',
-]
-```
+Follow the existing schema style: logical relationships and explicit cleanup, not new cascade foreign keys.
 
-- [ ] **Step 4: Run migrations and tests**
+- [ ] **Step 5: Create models and migration tests**
 
-Run:
+Verify all fields are writable and these uniqueness guards fail correctly:
+
+- Duplicate room/round number.
+- Duplicate round/question number.
+- Duplicate question-cycle/team answer.
+
+- [ ] **Step 6: Run and commit**
 
 ```bash
 php spark migrate
-vendor/bin/phpunit
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add app/Database/Migrations/2026-09-10-000005_CreateGameRounds.php app/Database/Migrations/2026-09-10-000006_CreateGameRoundAnswers.php app/Models/GameRoundModel.php app/Models/GameRoundAnswerModel.php
-git commit -m "feat: add shared Quiz Race round schema"
+./vendor/bin/phpunit
+git add app/Database/Migrations app/Models/GameRoomModel.php app/Models/GameRoundModel.php app/Models/GameRoundQuestionModel.php app/Models/GameRoundAnswerModel.php
+git commit -m "feat: add multi-round Quiz Race schema"
 ```
 
 ---
 
-## Task 2: `RaceRoundService` Pure Round Logic
+## Task 2: Pure Round and Question Services
 
 **Files:**
 
 - Create: `app/Services/Game/RaceRoundService.php`
+- Create: `app/Services/Game/RaceQuestionService.php`
+- Modify: `app/Services/Game/RaceTrackService.php` only for reusable helpers.
 - Create: `tests/unit/RaceRoundServiceTest.php`
+- Create: `tests/unit/RaceQuestionServiceTest.php`
 
-- [ ] **Step 1: Write unit tests first**
+- [ ] **Step 1: Test `RaceRoundService`**
 
 Cover:
 
-- `difficultyForRound()` returns `EASY` below 30%, `MEDIUM` from 30% through below 70%, and `HARD` from 70% leader progress.
-- Correct answer gives base +1.
-- Fastest correct answer gets +2 additional steps.
-- Tied fastest correct answers both get +2.
-- Wrong answer and missing answer stay at the same position.
-- Oil Spill lock makes a team ineligible for fastest bonus for one round and clears the lock.
-- Boost tile applies after landed position.
-- Checkpoint crossing gives +1.
-- Finish clamps at `max_position`.
-- Exact Oil Spill lifecycle: consume an existing lock for this round, but preserve a newly landed Oil Spill for the next round.
-- Movement ordering is base/fastest, landed tile effect, then one checkpoint bonus; checkpoint bonus does not chain into another special tile.
-- Resolution returns every team that reaches finish in the same round as co-winners.
+- Default allocation is `[15, 15, 20]`.
+- Allocation validation accepts 1-5 positive counts totaling 3-100.
+- Difficulty schedules are balanced and persisted-ready: 15 becomes 5/5/5; 20 becomes 7/6/7.
+- Schedule shuffle can receive a deterministic randomizer/seed for tests.
+- Round standings rank by score earned in round, correct count, then summed correct response time.
+- Exact ties return co-winners.
+- Round prize adds score only and never movement.
+- Race-finish interruption is not eligible for round prize.
 
-- [ ] **Step 2: Implement service**
-
-Recommended methods:
+Recommended interface:
 
 ```php
 final class RaceRoundService
 {
-    public function difficultyForRound(array $teams, array $room): string;
-
-    public function resolveMovements(array $teams, array $answers, array $room, array $board): array;
-
-    public function answeredTeamIds(array $answers): array;
-
-    public function winnerTeamIds(array $movements, int $maxPosition): array;
+    public function normalizeAllocation(mixed $source): array;
+    public function difficultySchedule(int $questionCount): array;
+    public function rankRound(array $teamRoundStats): array;
 }
 ```
 
-Return shape for each movement:
+- [ ] **Step 2: Test `RaceQuestionService`**
+
+Cover:
+
+- Correct `+1`, fastest correct `+2`, wrong/timeout `+0`.
+- Only correct answers compete for fastest.
+- Exact millisecond ties all receive the fastest bonus.
+- Existing Oil Spill lock removes fastest eligibility for one question and is consumed.
+- Landing on a new Oil Spill stores a lock for the next question.
+- Boost applies after landed position and clamps at finish.
+- Movement is computed for all teams before finishers are selected.
+- Finisher ranking uses total score, total correct, then summed correct response time.
+- Question-limit fallback ranks by position, score, correct count, then response time.
+- Exact final ties return co-winners.
+
+Recommended interface:
 
 ```php
-[
-    'team_id' => 1,
-    'from' => 1,
-    'landed' => 2,
-    'to' => 4,
-    'is_correct' => true,
-    'fastest_bonus' => true,
-    'special' => 'BOOST',
-    'effects' => [],
-    'lap_checkpoint' => false,
-    'active_effects' => [],
-]
+final class RaceQuestionService
+{
+    public function resolveMovements(array $teams, array $answers, array $room, array $board): array;
+    public function rankFinishers(array $finisherStats): array;
+    public function rankQuestionLimit(array $teamStats): array;
+}
 ```
 
-Use `RaceTrackService` internally for special tiles and lap math. `difficultyForRound()` uses `(leader_position - 1) / (max_position - 1)`, not rounded lap numbers, so the 30/40/30 split remains deterministic for every allowed lap count. Add small helper methods to `RaceTrackService` only if they are genuinely reusable and covered by tests.
-
-- [ ] **Step 3: Run focused tests and full suite**
+- [ ] **Step 3: Run and commit**
 
 ```bash
-vendor/bin/phpunit tests/unit/RaceRoundServiceTest.php
-vendor/bin/phpunit
-```
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add app/Services/Game/RaceRoundService.php tests/unit/RaceRoundServiceTest.php app/Services/Game/RaceTrackService.php
-git commit -m "feat: add shared round logic for Quiz Race"
+./vendor/bin/phpunit tests/unit/RaceRoundServiceTest.php
+./vendor/bin/phpunit tests/unit/RaceQuestionServiceTest.php
+./vendor/bin/phpunit
+git add app/Services/Game/RaceRoundService.php app/Services/Game/RaceQuestionService.php app/Services/Game/RaceTrackService.php tests/unit/RaceRoundServiceTest.php tests/unit/RaceQuestionServiceTest.php
+git commit -m "feat: add multi-round Quiz Race domain logic"
 ```
 
 ---
 
-## Task 3: Allow `QUIZ_RACE + TEAM_DEVICE` Room Creation
+## Task 3: Allow and Configure Team-Device Rooms
 
 **Files:**
 
@@ -270,181 +247,141 @@ git commit -m "feat: add shared round logic for Quiz Race"
 
 - [ ] **Step 1: Write failing tests**
 
-Add tests proving:
+Prove:
 
-- `createRoom()` accepts `game_mode=QUIZ_RACE` and `participation_mode=TEAM_DEVICE`.
-- Room uses race board clone with no ladders/snakes.
-- Room still has PIN and accepts `joinByPin()`.
-- `addTeamByOwner()` is still rejected for `TEAM_DEVICE`.
-- `QUIZ_RACE + TEACHER_CENTRALIZED` still works exactly as Phase 11.
+- `createRoom()` accepts `QUIZ_RACE + TEAM_DEVICE`.
+- Default allocation persists as `[15,15,20]`, limit 50, lap count 3, and round prize 100.
+- Custom valid allocations persist.
+- Invalid allocations are rejected, not silently changed.
+- Race board remains snake/ladder-free and uses `clamp_finish`.
+- PIN join works; owner roster addition remains rejected for Team Device.
+- Centralized Quiz Race remains unchanged.
 
-- [ ] **Step 2: Remove the creation guard**
+- [ ] **Step 2: Remove the Phase 11 creation guard**
 
-In `GameEngine::createRoom()`, remove the current rejection:
-
-```php
-if ($gameModeKey === 'QUIZ_RACE' && $participationMode !== 'TEACHER_CENTRALIZED') {
-    throw new DomainException(...);
-}
-```
-
-Keep all race board generation, `lap_count`, `finish_rule = clamp_finish`, and `near_finish_bonus = false`.
+Keep the guard removal scoped to `QUIZ_RACE + TEAM_DEVICE`. Parse allocation only for Team Device and derive `race_question_limit` and `lap_count` from it.
 
 - [ ] **Step 3: Update mode state**
 
-In `QuizRaceModeEngine::publicState()`:
+- Centralized: keep `actions: ['select_tier', 'answer']`.
+- Team Device: return `actions: ['race_question_answer']` and `round_model: 'multi_question_round'`.
 
-- For `TEACHER_CENTRALIZED`, keep `actions: ['select_tier', 'answer']`.
-- For `TEAM_DEVICE`, return `actions: ['race_answer']` and `round_model: 'shared_round'`.
-
-Do not mark the whole mode as planned when only one participation mode has different behavior.
-
-- [ ] **Step 4: Run tests**
+- [ ] **Step 4: Run and commit**
 
 ```bash
-vendor/bin/phpunit tests/database/QuizRaceModeTest.php
-vendor/bin/phpunit
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
+./vendor/bin/phpunit tests/database/QuizRaceModeTest.php
+./vendor/bin/phpunit
 git add app/Services/Game/GameEngine.php app/Services/Game/Modes/QuizRaceModeEngine.php tests/database/QuizRaceModeTest.php
-git commit -m "feat: allow Quiz Race rooms with team devices"
+git commit -m "feat: configure Quiz Race team-device rooms"
 ```
 
 ---
 
-## Task 4: GameEngine Round Lifecycle
+## Task 4: Start the First Round and Question Cycle
 
 **Files:**
 
 - Modify: `app/Services/Game/GameEngine.php`
-- Modify: `tests/database/QuizRaceTeamDeviceTest.php` (new)
+- Create: `tests/database/QuizRaceTeamDeviceTest.php`
 
-- [ ] **Step 1: Add database tests**
+- [ ] **Step 1: Test start behavior**
 
-Create `QuizRaceTeamDeviceTest` with `DatabaseTestTrait`. Cover:
+Cover:
 
-- `start()` creates active race round for `QUIZ_RACE + TEAM_DEVICE`.
-- Round question is visible in snapshot.
-- `current_team_id` stays null for shared-round rooms.
-- `start()` still creates `game_turns` for Ular Tangga and Quiz Race Tanpa Device.
-- Round deadline uses persisted server epoch milliseconds and the room question duration.
+- Start creates Ronde 1 with target 15 and a persisted 5/5/5 difficulty schedule.
+- Start creates Question 1 using schedule index 0.
+- `current_team_id` stays null and no `game_turns` row is created.
+- Round question uses selected room topics and excludes used questions.
+- Question start/deadline epoch milliseconds use one captured server clock.
+- Existing Ular Tangga and centralized Quiz Race start paths remain unchanged.
 
-- [ ] **Step 2: Add engine properties/models**
+- [ ] **Step 2: Add engine helpers**
 
-Import/use:
+Recommended private helpers:
 
-- `GameRoundModel`
-- `GameRoundAnswerModel`
-- `RaceRoundService`
-
-Add `private RaceRoundService $raceRounds;` and initialize it in the constructor.
-
-- [ ] **Step 3: Branch `start()`**
-
-In `GameEngine::start()`:
-
-- If room is `QUIZ_RACE + TEAM_DEVICE`, update room to `PLAYING`, keep `current_team_id` null, then call `createRaceRound($room, 1)`.
-- Otherwise keep existing behavior unchanged.
-
-- [ ] **Step 4: Implement private round creation**
-
-`createRaceRound(array $room, int $roundNumber): array`
-
-- Load teams and board.
-- Determine difficulty via `RaceRoundService::difficultyForRound()`.
-- Select one question using existing `selectQuestion()` and room topic rules.
-- Insert `game_rounds` with `ROUND_ACTIVE`, question, difficulty, `started_at`, `started_at_epoch_ms`, `deadline_at`, and `deadline_epoch_ms`.
-- Use one captured server `nowEpochMs` for all round timestamps. Do not reuse `GameEngine::responseMs()` because it currently has one-second resolution.
-- Record `race.round_started`.
-- Return round row.
-
-- [ ] **Step 5: Run tests**
-
-```bash
-vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Start
-vendor/bin/phpunit
+```php
+private function createRaceRound(array $room, int $roundNumber): array;
+private function createRaceQuestion(array $room, array $round, int $questionNumber): array;
+private function activeRaceRound(int $roomId): ?array;
+private function activeRaceQuestion(int $roundId): ?array;
 ```
 
-- [ ] **Step 6: Commit**
+`createRaceRound()` reads the allocation at `roundNumber - 1`, persists the full difficulty schedule, resets team streaks for fair round scoring, and records `race.round_started`.
+
+`createRaceQuestion()` selects one question for the scheduled difficulty, stores millisecond timing, and records `race.question_started`.
+
+- [ ] **Step 3: Run and commit**
 
 ```bash
+./vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Start
+./vendor/bin/phpunit
 git add app/Services/Game/GameEngine.php tests/database/QuizRaceTeamDeviceTest.php
-git commit -m "feat: start shared rounds for Quiz Race team-device rooms"
+git commit -m "feat: start multi-round Quiz Race questions"
 ```
 
 ---
 
-## Task 5: Answer Once Per Shared Round
+## Task 5: Submit One Answer per Team per Question
 
 **Files:**
 
 - Modify: `app/Services/Game/GameEngine.php`
 - Modify: `tests/database/QuizRaceTeamDeviceTest.php`
 
-- [ ] **Step 1: Write failing tests**
+- [ ] **Step 1: Write answer tests**
 
 Cover:
 
-- Current team can submit answer to active round.
-- Same team cannot answer twice.
-- Two near-simultaneous duplicate submits produce one row and a stable domain/idempotent response, not HTTP 500.
-- Team from another room cannot answer.
-- Invalid option is rejected.
-- Answer arriving at or after `deadline_epoch_ms` is rejected as late and triggers guarded timeout resolution.
-- Answer racing against deadline/teacher resolution either commits fully before resolution or is rejected; no answer row appears after its round is resolved.
-- After submit, snapshot shows this team answered but does not reveal correctness to other teams during active round.
-- When all teams have answered, engine resolves the round automatically.
-- Answers 50-100ms apart are ordered correctly; they are not treated as a tie merely because they share a wall-clock second.
+- Valid team session can answer the current active question.
+- Same team cannot answer the same question twice but can answer the next question.
+- Team from another room and invalid option are rejected.
+- Answer at/after deadline is late and cannot be inserted.
+- Two submissions 50-100ms apart retain their true order.
+- Answer racing with resolve either commits before the resolver claim or is rejected entirely.
+- Active snapshot reveals only answered flags, not option/correctness/response time.
 
-- [ ] **Step 2: Add `raceRoundAnswer()`**
-
-Public method:
+- [ ] **Step 2: Implement atomic `raceQuestionAnswer()`**
 
 ```php
-public function raceRoundAnswer(string $roomUuid, string $teamUuid, int $optionId, ?string $idempotencyKey = null): array
+public function raceQuestionAnswer(
+    string $roomUuid,
+    string $teamUuid,
+    int $optionId,
+    ?string $idempotencyKey = null
+): array;
 ```
 
-Behavior:
+Within one transaction:
 
-- Room must be `PLAYING`, `QUIZ_RACE`, `TEAM_DEVICE`.
-- Team must belong to room.
-- Active round must exist, room must not be paused, and server epoch milliseconds must be strictly before `deadline_epoch_ms`.
-- Option must belong to round question.
-- Begin a transaction and conditionally increment `game_rounds.answer_count` only where the round is still `ROUND_ACTIVE` and `deadline_epoch_ms > nowEpochMs`. Require exactly one affected row before inserting the answer. This row update serializes submit against resolver claims on both SQLite and MySQL.
-- Capture `answered_at_epoch_ms` with `microtime(true)`, calculate `response_ms` from the persisted round epoch, then insert one `game_round_answers` row in the same transaction.
-- Catch the unique `round_id + team_id` collision and convert it to a stable already-answered response. Do not rely on a pre-insert count check.
-- Record `race.answer_submitted`.
-- After commit, if `answer_count` equals the fixed room team count, call `resolveRaceRound()`.
-- Return snapshot.
+1. Validate room `PLAYING`, mode, participation mode, team ownership, question state, and deadline.
+2. Conditional increment `game_round_questions.answer_count` where state is `QUESTION_ACTIVE` and deadline is still future.
+3. Require one affected row.
+4. Capture `answered_at_epoch_ms` with `microtime(true)` and derive `response_ms` from persisted question start.
+5. Insert answer with `CORRECT` or `WRONG` outcome.
+6. Roll back increment if unique answer insertion fails.
 
-Use idempotency scope:
+After commit, resolve when answer count equals the fixed room team count.
 
-```php
-race-round-answer:{roomUuid}:{roundUuid}:{teamUuid}
+Idempotency scope:
+
+```text
+race-question-answer:{roomUuid}:{roundQuestionUuid}:{teamUuid}
 ```
 
-`race.answer_submitted` must not include `option_id`, correctness, or response time while the round is active.
+`race.answer_submitted` exposes team identity/answered status only while active.
 
-- [ ] **Step 3: Run tests**
+- [ ] **Step 3: Run and commit**
 
 ```bash
-vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter RaceRoundAnswer
-vendor/bin/phpunit
-```
-
-- [ ] **Step 4: Commit**
-
-```bash
+./vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Answer
+./vendor/bin/phpunit
 git add app/Services/Game/GameEngine.php tests/database/QuizRaceTeamDeviceTest.php
-git commit -m "feat: accept one answer per team in Quiz Race rounds"
+git commit -m "feat: accept Quiz Race question-cycle answers"
 ```
 
 ---
 
-## Task 6: Resolve Round Movement
+## Task 6: Resolve a Question, Score, Move, and Finish Immediately
 
 **Files:**
 
@@ -452,161 +389,182 @@ git commit -m "feat: accept one answer per team in Quiz Race rounds"
 - Modify: `app/Config/Game.php`
 - Modify: `tests/database/QuizRaceTeamDeviceTest.php`
 
-- [ ] **Step 1: Write failing tests**
+- [ ] **Step 1: Write resolution tests**
 
-Cover:
+Cover movement, score breakdown, timeout rows, Boost/Oil Spill, exact fastest ties, and transaction rollback. Specifically prove:
 
-- Correct non-fastest team moves +1.
-- Fastest correct team moves +3.
-- Fastest comparison uses persisted `response_ms` with millisecond resolution.
-- Wrong answer stays put.
-- Timeout/no answer stays put.
-- Resolution inserts one synthetic `TIMEOUT` answer row for each missing team without increasing `answer_count`.
-- Boost adds +2.
-- Oil Spill blocks fastest bonus next round and then clears.
-- Checkpoint adds +1.
-- Finish sets room `FINISHED` and records winner.
-- Multiple finishers in one resolution are recorded as co-winners.
-- A resolved result remains visible until `reveal_until`; only then is the next round created automatically.
-- Answer-last, deadline polling, and teacher resolve racing together update positions exactly once.
-- An answer racing with resolve is either included before the resolver claim or rejected without increment/insert drift.
-- A failed resolution transaction leaves the round claim recoverable as `ROUND_ACTIVE`.
+- Correct non-fastest moves +1; fastest correct moves +3.
+- Wrong/timeout stays put.
+- Missing teams receive synthetic `TIMEOUT` answer rows.
+- Time bonus uses each persisted `response_ms`, not resolve wall-clock time.
+- Fastest/Boost/Oil Spill do not directly add score.
+- Every team movement is calculated before finisher selection.
+- One finisher ends the room immediately.
+- A finish on any question, including the round's last allocated question, marks the round `ROUND_INTERRUPTED`, creates no next question, and awards no round prize.
+- Simultaneous finish uses score/correct/time tie-breaks and supports exact co-winner.
+- Concurrent last-answer, polling, and teacher-force requests apply movement and score once.
 
-- [ ] **Step 2: Add `resolveRaceRound()`**
-
-Public or private method:
+- [ ] **Step 2: Implement `resolveRaceQuestion()`**
 
 ```php
-public function resolveRaceRound(string $roomUuid, bool $force = false, ?string $idempotencyKey = null): array
+public function resolveRaceQuestion(
+    string $roomUuid,
+    bool $force = false,
+    ?string $idempotencyKey = null
+): array;
 ```
 
-Use idempotency scope:
+Without `force`, allow resolution only after all teams answer or deadline passes. `force=true` is authorized at the controller boundary and turns missing answers into timeout.
+
+Transaction:
+
+1. Conditional claim `QUESTION_ACTIVE -> QUESTION_RESOLVING`; continue only for one affected row.
+2. Insert synthetic timeout outcomes.
+3. Resolve movement for all teams.
+4. Calculate base/time/streak score and score transactions per team.
+5. Update all teams.
+6. Increment the round's `question_resolved_count` exactly once.
+7. Determine finishers after all movement updates are prepared.
+8. Persist question as `QUESTION_RESOLVED`, movement summary, fastest ids, finisher ids, and reveal deadline.
+9. If finishers exist, set room `FINISHED`, set round `ROUND_INTERRUPTED`, and persist `finish_reason=TRACK_FINISH` in the event payload. This finish branch takes priority even when `question_resolved_count === question_target_count`; do not calculate or award a round prize.
+10. Bump room state once and commit.
+11. Publish events only after successful commit.
+
+Add `raceQuestionRevealSeconds = 3` and `raceRoundRevealSeconds = 5` to `Config\Game`.
+
+Idempotency scope:
 
 ```text
-race-round-resolve:{roomUuid}:{roundUuid}
+race-question-resolve:{roomUuid}:{roundQuestionUuid}
 ```
 
-Behavior:
+- [ ] **Step 3: Emit events**
 
-- Only for `QUIZ_RACE + TEAM_DEVICE`.
-- Without `force`, resolve active round only if all teams answered or deadline passed. `force=true` is owner-only at the controller boundary and treats missing answers as timeout.
-- Begin a transaction and atomically claim the round with a conditional `UPDATE ... WHERE id = ? AND state = 'ROUND_ACTIVE'`. Continue only when exactly one row was affected.
-- Load teams, answers, board.
-- Insert a synthetic `TIMEOUT` answer for every missing team, with null option/text/response time, so each resolved round has one outcome per team.
-- Use `RaceRoundService::resolveMovements()`.
-- In one transaction:
-  - Update team positions, scores, streaks, active effects.
-  - Record score transactions using the exact scoring rules below.
-  - Update round to `ROUND_RESOLVED` with fastest ids, co-winner ids, movement summary, `reveal_until`, and `reveal_until_epoch_ms`.
-  - If winner exists, update room to `FINISHED`.
-  - Do not create the next round yet; the resolved result must remain observable.
-  - Bump room state once for the completed aggregate transition.
-- Record:
-  - `race.round_resolved`
-  - `tile.special_triggered`
-  - `lap.checkpoint`
-  - `game.finished` if applicable
+- `race.question_resolved` with movement summary.
+- `tile.special_triggered` as applicable.
+- `race.round_interrupted` if finish occurred before round-completion processing, including on the last allocated question.
+- `game.finished` with `TRACK_FINISH`, winner UUID list, and legacy first UUID.
 
-Scoring rules are explicit:
-
-- Correct/wrong base points use the existing room configuration.
-- Timeout uses wrong-answer points and resets streak.
-- Time bonus uses that answer's `response_ms` against the round duration, never the wall clock at resolve time.
-- Streak bonus remains per team.
-- `near_finish_bonus` is disabled.
-- Fastest movement, Boost, and checkpoint do not add score points.
-- Emit matching `score_transactions` rows so reports remain auditable.
-
-Add `public int $raceRoundRevealSeconds = 3;` to `Config\Game`; do not hard-code the reveal duration in the engine.
-
-For simultaneous finish, `game.finished` includes all `winner_team_uuids`; include the first UUID as legacy `winner_team_uuid` until all existing consumers have migrated.
-
-- [ ] **Step 3: Deadline handling**
-
-Add lightweight auto-resolution and advancement:
-
-- `raceRoundAnswer()` resolves immediately when all teams answered.
-- `snapshot()` may call `resolveExpiredRaceRoundIfNeeded($room)` before building public state, but that helper must use the same atomic claim.
-- While the current round is `ROUND_RESOLVED`, snapshot exposes its result. Once `reveal_until` passes, call `advanceResolvedRaceRoundIfNeeded()`.
-- Advancement atomically changes the prior round from `ROUND_RESOLVED` to `ROUND_CLOSED` and creates exactly one next round in the same transaction.
-- `forceTimeout()` for `QUIZ_RACE + TEAM_DEVICE` delegates to `resolveRaceRound(..., true, ...)` instead of touching `game_turns`.
-- Event/outbox publication occurs only after the state transaction succeeds; never publish a result from a rolled-back transaction.
-
-- [ ] **Step 4: Run tests**
+- [ ] **Step 4: Run and commit**
 
 ```bash
-vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Resolve
-vendor/bin/phpunit
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
+./vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Resolve
+./vendor/bin/phpunit
 git add app/Services/Game/GameEngine.php app/Config/Game.php tests/database/QuizRaceTeamDeviceTest.php
-git commit -m "feat: resolve simultaneous Quiz Race round movement"
+git commit -m "feat: resolve Quiz Race questions and finish immediately"
 ```
 
 ---
 
-## Task 7: Snapshot and Public Round Payload
+## Task 7: Advance Questions, Complete Rounds, and Enforce Question Limit
 
 **Files:**
 
 - Modify: `app/Services/Game/GameEngine.php`
 - Modify: `tests/database/QuizRaceTeamDeviceTest.php`
 
-- [ ] **Step 1: Add snapshot tests**
+- [ ] **Step 1: Write advancement tests**
 
 Cover:
 
-- `current_round` is null outside `QUIZ_RACE + TEAM_DEVICE`.
-- Active round exposes question/options, deadline, answered flags.
-- Active round hides other teams' correctness.
-- Resolving round disables answering and does not expose partial movement.
-- Resolved round exposes movement summary, fastest team UUIDs, co-winners, and `reveal_until`.
-- After the next round starts, `last_resolved_round` still exposes the prior movement summary for refresh/reconnect feedback.
-- Projector snapshot works with existing projector token rules.
+- Resolved question remains visible until reveal ends.
+- Exactly one next question is created when the round still has quota.
+- Question 15 completes a 15-question round instead of creating Question 16.
+- A finish on Question 15 takes priority over round completion, marks the round interrupted, and awards no round prize.
+- Round winner is based on score earned in that round before prize.
+- Round prize adds default 100 score and zero movement.
+- Exact round ties award all co-winners.
+- Completed round remains visible for checkpoint reveal, then exactly one next round is created.
+- Round 3 uses target 20 in the default allocation.
+- If all 50 questions resolve without a finisher, game finishes with `QUESTION_LIMIT` ranking.
+- No question/round advancement occurs after room `FINISHED`.
 
-- [ ] **Step 2: Implement helpers**
+- [ ] **Step 2: Implement guarded question advancement**
 
-Recommended helpers:
+`advanceResolvedRaceQuestionIfNeeded()` conditionally closes one resolved question after reveal.
 
-- `activeRaceRound(int $roomId): ?array`
-- `latestRaceRound(int $roomId): ?array`
-- `roundAnswers(int $roundId): array`
-- `publicRound(array $round, array $room, ?string $viewerTeamUuid = null): array`
+- If race is finished: stop.
+- If `question_resolved_count < question_target_count`: create the next question.
+- If quota is complete: call `completeRaceRound()`.
 
-Add `current_round` and `last_resolved_round` to `snapshot()`. `current_round` is the latest non-closed round; `last_resolved_round` is the latest resolved/closed round with its movement summary. Keep the question/options hidden once they are no longer needed if exposing them would reveal answer correctness.
+The close transition and next-row insertion belong to one transaction. Unique round/question numbering is a secondary guard.
 
-- [ ] **Step 3: Keep existing payload stable**
+- [ ] **Step 3: Implement round completion**
 
-Do not rename:
+`completeRaceRound()`:
 
-- `current_turn`
-- `mode_state`
-- `teams`
-- `leaderboard`
-- `events`
+1. Aggregate per-team score delta, correctness, and correct response time for only that round.
+2. Rank with `RaceRoundService` before applying prize.
+3. Add `race_round_winner_bonus_points` to each exact winner's score.
+4. Insert `RACE_ROUND_WINNER` score transactions.
+5. Set `ROUND_COMPLETED`, summary, winner ids, and checkpoint reveal deadline.
+6. Record `race.round_completed` after commit.
 
-Add `current_round` and `last_resolved_round` as additive fields only.
+- [ ] **Step 4: Implement guarded round advancement**
 
-- [ ] **Step 4: Run tests**
+After checkpoint reveal, conditionally set `ROUND_COMPLETED -> ROUND_CLOSED`.
+
+- If another allocation exists: create the next round and its first question.
+- If allocation is exhausted: rank all teams using position, score, correctness, and response time; finish with reason `QUESTION_LIMIT`.
+
+- [ ] **Step 5: Run and commit**
 
 ```bash
-vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Snapshot
-vendor/bin/phpunit
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
+./vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Advance
+./vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Round
+./vendor/bin/phpunit
 git add app/Services/Game/GameEngine.php tests/database/QuizRaceTeamDeviceTest.php
-git commit -m "feat: expose shared Quiz Race rounds in snapshots"
+git commit -m "feat: advance Quiz Race questions and round checkpoints"
 ```
 
 ---
 
-## Task 8: API Routes and Controller Actions
+## Task 8: Snapshot Contract for Multi-Round Race
+
+**Files:**
+
+- Modify: `app/Services/Game/GameEngine.php`
+- Modify: `tests/database/QuizRaceTeamDeviceTest.php`
+
+- [ ] **Step 1: Test additive snapshot fields**
+
+Cover:
+
+- `current_round` contains round number, target, resolved count, and `current_question`.
+- Active question exposes question/options/deadline and answered flags only.
+- Resolving state exposes no partial result.
+- Resolved question exposes movement and own/all result according to viewer context.
+- `last_resolved_question` survives creation of the next question.
+- `last_completed_round` survives creation of the next round.
+- Finished snapshot contains finish reason and winner list.
+- Existing `current_turn`, `mode_state`, `teams`, `leaderboard`, and `events` keys are unchanged.
+
+- [ ] **Step 2: Add helpers**
+
+Recommended helpers:
+
+- `latestRaceRound(int $roomId)`.
+- `latestRaceQuestion(int $roundId)`.
+- `raceQuestionAnswers(int $roundQuestionId)`.
+- `publicRaceRound(...)`.
+- `publicRaceQuestion(...)`.
+- `latestResolvedRaceQuestion(...)`.
+- `latestCompletedRaceRound(...)`.
+
+Before building state, snapshot may call guarded timeout/question/round advancement. No polling-triggered mutation may bypass an atomic state claim.
+
+- [ ] **Step 3: Run and commit**
+
+```bash
+./vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php --filter Snapshot
+./vendor/bin/phpunit
+git add app/Services/Game/GameEngine.php tests/database/QuizRaceTeamDeviceTest.php
+git commit -m "feat: expose multi-round Quiz Race snapshots"
+```
+
+---
+
+## Task 9: API Routes, Authorization, and Contracts
 
 **Files:**
 
@@ -614,236 +572,161 @@ git commit -m "feat: expose shared Quiz Race rounds in snapshots"
 - Modify: `app/Controllers/Api/V1/RoomsController.php`
 - Create: `tests/feature/QuizRaceTeamDeviceApiTest.php`
 
-- [ ] **Step 1: Write HTTP-level authorization and contract tests**
+- [ ] **Step 1: Write HTTP tests**
 
-Cover:
-
-- Team with a valid room session can answer only for its own `team_uuid`.
-- Team from another browser/session or room is rejected.
-- Teacher owner can force-resolve; another teacher and anonymous request are rejected.
-- Duplicate answer returns a stable domain/idempotent response rather than 500.
-- Route response preserves the standard `{ok,data,meta}` envelope.
+Cover valid team answer, cross-team/cross-room rejection, owner-only force resolve, anonymous rejection, duplicate submit response, idempotency headers, rate-limit route registration, and standard `{ok,data,meta}` response envelope.
 
 - [ ] **Step 2: Add routes**
 
 ```php
-$routes->post('rooms/(:segment)/race-round/answer', 'Api\V1\RoomsController::raceRoundAnswer/$1', ['filter' => 'rateLimit:45,60,api-mutation']);
-$routes->post('rooms/(:segment)/race-round/resolve', 'Api\V1\RoomsController::resolveRaceRound/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
+$routes->post('rooms/(:segment)/race-question/answer', 'Api\V1\RoomsController::raceQuestionAnswer/$1', ['filter' => 'rateLimit:45,60,api-mutation']);
+$routes->post('rooms/(:segment)/race-question/resolve', 'Api\V1\RoomsController::resolveRaceQuestion/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
 ```
 
-- [ ] **Step 3: Add controller methods**
+- [ ] **Step 3: Add controller actions**
 
-`raceRoundAnswer()`:
+- `raceQuestionAnswer()` validates `TeamSessionService::assertTeamSession()` and forwards `team_uuid`, `option_id`, and idempotency key.
+- `resolveRaceQuestion()` validates `TenantContext::assertRoomOwner()`, requires `force: true`, and forwards idempotency key.
+- Existing endpoint behavior remains unchanged.
 
-- Read `team_uuid` and `option_id`.
-- Call `TeamSessionService::assertTeamSession()`.
-- Call `GameEngine::raceRoundAnswer()`.
-
-`resolveRaceRound()`:
-
-- Require `TenantContext::assertRoomOwner()`.
-- Read `force` and require it to be true for the teacher's early-close action.
-- Call `GameEngine::resolveRaceRound($roomUuid, true, ...)`.
-- Forward `Idempotency-Key` for both mutations.
-
-- [ ] **Step 4: Run focused and full suites**
+- [ ] **Step 4: Run and commit**
 
 ```bash
 ./vendor/bin/phpunit tests/feature/QuizRaceTeamDeviceApiTest.php
-vendor/bin/phpunit
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
+./vendor/bin/phpunit
 git add app/Config/Routes.php app/Controllers/Api/V1/RoomsController.php tests/feature/QuizRaceTeamDeviceApiTest.php
-git commit -m "feat: add Quiz Race shared round API endpoints"
+git commit -m "feat: add Quiz Race question-cycle API"
 ```
 
 ---
 
-## Task 9: Create Game UI - Enable Device per Tim for Quiz Race
+## Task 10: Create Game UI for Round Allocation
 
 **Files:**
 
 - Modify: `app/Views/teacher/games/create.php`
-- Modify: `app/Controllers/Teacher/GameController.php` only if needed
+- Modify: `app/Controllers/Teacher/GameController.php`
+- Modify: `public/assets/app.css` if needed.
 
-- [ ] **Step 1: Write the intended behavior**
+- [ ] **Step 1: Enable Team Device for Quiz Race**
 
-Manual expectation:
+Remove the UI disable/forced-centralized behavior while retaining both participation choices.
 
-- Select `Quiz Race`.
-- `Device per Tim` remains enabled.
-- `Tanpa Device` remains enabled.
-- Race fields stay visible for both participation modes.
-- Ular Tangga-only fields stay hidden for Quiz Race.
+- [ ] **Step 2: Add allocation editor**
 
-- [ ] **Step 2: Update JS toggle**
+For Team Device Quiz Race:
 
-In the mode visibility script, remove the behavior that disables `TEAM_DEVICE` when `QUIZ_RACE` is selected.
+- Default three numeric round inputs: 15, 15, 20.
+- Add/remove round controls, minimum 1 and maximum 5.
+- Each count minimum 1; total maximum 100.
+- Display computed total questions.
+- Derive lap count from number of rounds; do not show a conflicting independent lap input.
+- Round winner bonus defaults to 100 and may remain hidden/system-configured in this phase.
 
-Keep:
+For centralized Quiz Race, keep existing lap and track fields unchanged.
 
-- `near_finish_bonus` disabled for all Quiz Race.
-- Race fields visible for all Quiz Race.
-- Snakes-only fields hidden for all Quiz Race.
+- [ ] **Step 3: Update bank warning**
 
-- [ ] **Step 3: Update bank-soal warning**
+For Team Device, estimated required questions equals the allocation sum because one question is shared by all teams. Warn, do not block, if the selected published pool is smaller.
 
-Use different estimates:
+- [ ] **Step 4: Validate server input**
 
-- `TEACHER_CENTRALIZED`: `maxTeams * Math.ceil(trackLength / 2)`
-- `TEAM_DEVICE`: `Math.ceil(trackLength / 1.5)`
+Never trust generated hidden totals. Parse each allocation server-side, validate count/range/sum, derive total and lap count, then pass canonical values to `createRoom()`.
 
-Listen to both `game_mode` and `participation_mode` radio changes.
+- [ ] **Step 5: Manual check and commit**
 
-- [ ] **Step 4: Manual verification**
-
-Run:
+Verify mode/participation toggles restore prior values cleanly and do not alter centralized defaults.
 
 ```bash
-php spark serve
-```
-
-Check `/teacher/games/create`:
-
-- Ular Tangga still defaults to Device per Tim.
-- Quiz Race allows both Device per Tim and Tanpa Device.
-- Warning text changes when toggling participation mode.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add app/Views/teacher/games/create.php app/Controllers/Teacher/GameController.php
-git commit -m "feat: enable team-device selection for Quiz Race rooms"
+git add app/Views/teacher/games/create.php app/Controllers/Teacher/GameController.php public/assets/app.css
+git commit -m "feat: configure Quiz Race round allocations"
 ```
 
 ---
 
-## Task 10: Team Controller UI for Shared Rounds
+## Task 11: Team Controller for Multi-Question Rounds
 
 **Files:**
 
 - Modify: `public/assets/app.js`
 - Modify: `public/assets/app.css`
-- Modify: `app/Views/game/controller.php` if markup needs a dedicated status area
+- Modify: `app/Views/game/controller.php` if dedicated result markup is needed.
 
-- [ ] **Step 1: Update `controller(config)` state drawing**
+- [ ] **Step 1: Branch shared race rendering**
 
-For `snapshot.mode_state.key === 'QUIZ_RACE'` and `snapshot.mode_state.round_model === 'shared_round'`:
+For `round_model === 'multi_question_round'`:
 
-- Hide roll button.
-- Hide tier buttons.
-- Show active round question.
-- Enable answer buttons only if current team has not answered and room is `PLAYING`.
-- After submit, disable all options and show "Jawaban terkirim, menunggu ronde selesai".
-- Keep countdown from `current_round.deadline_epoch_ms`.
-- During `ROUND_RESOLVING`, keep controls disabled and show a short calculating state.
-- During `ROUND_RESOLVED`, show the result panel and do not make the next question answerable until the reveal phase closes.
+- Hide dice and difficulty controls.
+- Show `Ronde X/Y` and `Soal A/B`.
+- Render `current_round.current_question`.
+- Enable options only for an unanswered team during `QUESTION_ACTIVE` and room `PLAYING`.
+- Show sent/waiting, resolving, and resolved-result states.
+- Use `last_resolved_question` after transition/reconnect.
 
-- [ ] **Step 2: Add answer handler branch**
-
-When answering shared round:
+- [ ] **Step 2: Submit to the new endpoint**
 
 ```js
-jsonFetch('/api/v1/rooms/' + config.roomUuid + '/race-round/answer', {
-    method: 'POST',
-    body: JSON.stringify({team_uuid: activeTeamUuid(), option_id: optionId}),
-})
+POST /api/v1/rooms/{roomUuid}/race-question/answer
 ```
 
-Do not call `/answer` for shared-round Quiz Race.
+Generate/reuse one idempotency key per team/question submission. Do not call `/answer` or the old draft `/race-round/answer` endpoint.
 
-- [ ] **Step 3: Render round result feedback**
+- [ ] **Step 3: Render feedback**
 
-After `ROUND_RESOLVED`, show movement summary for the active team. Continue to use `last_resolved_round` after the next round starts so a refresh/reconnect does not erase feedback:
+Show outcome, fastest bonus, movement, tile effect, current position, answer score delta, and score breakdown. At checkpoint, show round winner(s) and score-only prize without movement animation.
 
-- Correct/wrong/timeout.
-- Fastest bonus if received.
-- Boost/Oil Spill/checkpoint effects.
-- Current position.
+- [ ] **Step 4: Manual multi-session check and commit**
 
-- [ ] **Step 4: Manual verification**
-
-With two browser sessions:
-
-- Join two teams by PIN.
-- Start Quiz Race Device per Tim.
-- Confirm both see the same question.
-- Submit one correct and one wrong.
-- Confirm answered team waits, unresolved team can still answer.
-- Confirm all devices see the resolved result before the next question becomes answerable.
-- Refresh one device immediately after a round transition and confirm its previous result remains available.
-- Confirm next round appears after both answer or teacher resolves.
-
-- [ ] **Step 5: Commit**
+Use separate browser profiles/incognito sessions for two teams. Verify one answer per team per question, next-question progression, checkpoint after configured quota, and immediate finish mid-round.
 
 ```bash
 git add public/assets/app.js public/assets/app.css app/Views/game/controller.php
-git commit -m "feat: support shared Quiz Race rounds on team controllers"
+git commit -m "feat: support multi-round Quiz Race controllers"
 ```
 
 ---
 
-## Task 11: Teacher Control UI for Shared Rounds
+## Task 12: Teacher Control and Projector
 
 **Files:**
 
 - Modify: `public/assets/app.js`
-- Modify: `app/Views/teacher/games/control.php`
 - Modify: `public/assets/app.css`
+- Modify: `app/Views/teacher/games/control.php`
+- Modify: `app/Views/game/projector.php` only if markup is needed.
 
-- [ ] **Step 1: Add shared-round status display**
+- [ ] **Step 1: Add teacher question status**
 
-For `QUIZ_RACE + TEAM_DEVICE`, Control Game should show:
+Show round number, question number, target/resolved counts, difficulty, deadline, answered count, and current leaders.
 
-- Round number.
-- Difficulty.
-- Countdown.
-- Answered count / total teams.
-- Fastest team(s) after resolve.
-- All co-winners if multiple teams finish in the same round.
-- Button "Tutup Ronde" while round active.
-- A resolved-result state before the next active question.
+- [ ] **Step 2: Add `Tutup Soal`**
 
-- [ ] **Step 2: Wire force resolve**
+Relabel the shared-race force action contextually. Confirm that unanswered teams become timeout, then send:
 
-Button calls:
-
-```js
-POST /api/v1/rooms/{roomUuid}/race-round/resolve {"force": true}
+```text
+POST /api/v1/rooms/{roomUuid}/race-question/resolve {"force":true}
 ```
 
-Keep existing `Force Timeout` behavior for Ular Tangga and Tanpa Device. For shared rounds, relabel that command to `Tutup Ronde`, require confirmation that unanswered teams become timeout, and call the round resolve endpoint.
+Hide `Skip Turn` and `Start Timer`. Keep pause/resume.
 
-- [ ] **Step 3: Keep roster behavior separate**
+- [ ] **Step 3: Project question and checkpoint events**
 
-For `TEAM_DEVICE`, roster manual panel stays hidden. Teams join through PIN, same as existing Ular Tangga.
+- Animate all team movements from one resolved question as one sequence/batch.
+- Show round checkpoint standings and score prize.
+- On `TRACK_FINISH`, stop all queues and show the race winner immediately.
+- Support simultaneous-finisher tie-break/co-winner payloads.
+- Do not show Ular Tangga wording in Quiz Race views.
 
-For shared-round Quiz Race, also hide/disable `Skip Turn` and `Start Timer`. Pause and Resume remain available but use the shared-round deadline behavior from Task 12.
-
-- [ ] **Step 4: Manual verification**
-
-Check:
-
-- Control page updates answered count as device teams submit.
-- Force resolve closes active round.
-- Force resolve before the deadline treats unanswered teams as timeout.
-- New round appears automatically if no winner.
-- Status becomes `FINISHED` when a team crosses finish.
-- Projector finish overlay and event feed show every co-winner from `winner_team_uuids`, while retaining support for legacy `winner_team_uuid` events.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Manual check and commit**
 
 ```bash
-git add public/assets/app.js public/assets/app.css app/Views/teacher/games/control.php
-git commit -m "feat: add teacher controls for shared Quiz Race rounds"
+git add public/assets/app.js public/assets/app.css app/Views/teacher/games/control.php app/Views/game/projector.php
+git commit -m "feat: add multi-round Quiz Race control and projector"
 ```
 
 ---
 
-## Task 12: Platform Integration, Pause/Resume, and Cleanup
+## Task 13: Pause, Reports, Cleanup, and Question Integrity
 
 **Files:**
 
@@ -852,141 +735,103 @@ git commit -m "feat: add teacher controls for shared Quiz Race rounds"
 - Modify: `app/Services/Report/GameReportService.php`
 - Modify: `app/Views/teacher/games/report.php`
 - Modify: `app/Views/teacher/games/report_pdf.php`
-- Modify: `public/assets/app.js`
 - Modify: `tests/database/QuizRaceTeamDeviceTest.php`
 - Modify: `tests/database/GameReportServiceTest.php`
 - Modify: `tests/database/GameEngineHardeningTest.php`
 
-- [ ] **Step 1: Write integration tests first**
+- [ ] **Step 1: Pause/resume tests and implementation**
 
-Cover:
+- Pause active question by storing remaining milliseconds and clearing deadline.
+- Pause resolved question or completed-round reveal by preserving remaining reveal time.
+- Reject answer while paused.
+- Resume rebuilds the appropriate deadline without granting material extra time.
+- Repeated pause/resume remains stable.
 
-- `usedQuestionIdsForRoom()` includes `game_rounds.question_id`; no question repeats until the eligible pool is exhausted.
-- An active/resolving round prevents its question and options from being edited/deleted through `QuestionBankService`.
-- Deleting a finished Team Device race deletes round answers, rounds, race idempotency keys, score rows, events, teams, room, and its room-instance board.
-- Report answer history and question statistics include `game_round_answers` in the same normalized shape as turn answers and distinguish `WRONG` from `TIMEOUT`.
-- Report/projector can mark every co-winner while retaining the legacy first-winner field.
-- Pause freezes an active round's remaining milliseconds and rejects answers while paused.
-- Resume creates a new deadline from the stored remaining milliseconds.
-- Repeated pause/resume does not increase or lose substantial time beyond a small test tolerance.
+- [ ] **Step 2: Question selection and mutation protection**
 
-- [ ] **Step 2: Integrate question history and protection**
+- Union `game_round_questions.question_id` into `usedQuestionIdsForRoom()`.
+- Prevent edit/delete of questions or options used by active/resolving race questions.
+- Include historical round answers in option usage checks.
 
-Update `GameEngine::usedQuestionIdsForRoom()` to union question ids from `game_turns` and `game_rounds`. Update `QuestionBankService::assertNotUsedByActiveRoom()` and option-usage checks so active/resolving race questions cannot be mutated and historical race answers preserve referential integrity.
+- [ ] **Step 3: Reports**
 
-- [ ] **Step 3: Integrate room deletion**
+Normalize turn answers and round answers into the current report payload. Add round/question number, outcome, response time, score breakdown, round prizes, finish reason, and all winner UUIDs. Preserve legacy `winner` while adding `winners`.
 
-In `GameEngine::deleteRoom()`:
+- [ ] **Step 4: Explicit room cleanup**
 
-- Resolve all round ids for the room.
-- Delete `game_round_answers` before `game_rounds`.
-- Delete idempotency rows whose scope starts with the canonical race answer/resolve prefixes.
-- Keep existing deletion ordering and room-instance board cleanup.
-- Add a rollback assertion; partial cleanup must not be reported as success.
+Delete in safe order:
 
-- [ ] **Step 4: Normalize round answers into reports**
+1. `game_round_answers` for the room's question ids.
+2. `game_round_questions`.
+3. `game_rounds`.
+4. Race question answer/resolve idempotency scopes.
+5. Existing score/event/outbox/team/room rows and room-instance board.
 
-Extend `GameReportService` with a normalized union of turn answers and round answers. Preserve the current report payload keys so the HTML/PDF views and chart builder do not need separate modes. Include round number/source metadata additively when useful.
+Assert transaction success and add a deletion regression test.
 
-Update winner extraction to prefer `winner_team_uuids`, fall back to `winner_team_uuid`, and return/mark a list of winners. Return additive `winners` while keeping legacy `winner` as the first item. Update HTML/PDF views to render all winners. Keep single-winner Ular Tangga reports unchanged.
+- [ ] **Step 5: Event commit ordering**
 
-- [ ] **Step 5: Implement shared-round pause/resume**
+Do not publish realtime state before its database transaction commits. Add a failure-path test proving rolled-back resolution leaves no resolved/finished event or outbox payload.
 
-Branch `GameEngine::pause()` and `resume()` for `QUIZ_RACE + TEAM_DEVICE`:
-
-- On pause during `ROUND_ACTIVE`, atomically store `max(0, deadline_epoch_ms - nowEpochMs)` in `paused_remaining_ms` and clear deadline fields.
-- Reject race answers while room status is `PAUSED`.
-- On resume, rebuild deadline fields from `paused_remaining_ms` and clear that field.
-- If pause happens during `ROUND_RESOLVED`, freeze and restore the reveal duration by the same principle.
-- Never use `game_turns` or `current_team_id` in this branch.
-
-- [ ] **Step 6: Verify event and realtime commit ordering**
-
-Do not call a realtime publisher from inside a transaction that can still roll back. Persist state and outbox/event rows transactionally where practical; publish only after successful commit. Add a failure-path test proving no `race.round_resolved`/`game.finished` event survives a rolled-back movement transaction.
-
-- [ ] **Step 7: Run focused and full suites**
+- [ ] **Step 6: Run and commit**
 
 ```bash
 ./vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php
 ./vendor/bin/phpunit tests/database/GameReportServiceTest.php
 ./vendor/bin/phpunit tests/database/GameEngineHardeningTest.php --filter Delete
 ./vendor/bin/phpunit
-```
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add app/Services/Game/GameEngine.php app/Services/Question/QuestionBankService.php app/Services/Report/GameReportService.php app/Views/teacher/games/report.php app/Views/teacher/games/report_pdf.php public/assets/app.js tests/database/QuizRaceTeamDeviceTest.php tests/database/GameReportServiceTest.php tests/database/GameEngineHardeningTest.php
-git commit -m "feat: integrate shared Quiz Race rounds with platform lifecycle"
+git add app/Services/Game/GameEngine.php app/Services/Question/QuestionBankService.php app/Services/Report/GameReportService.php app/Views/teacher/games/report.php app/Views/teacher/games/report_pdf.php tests/database/QuizRaceTeamDeviceTest.php tests/database/GameReportServiceTest.php tests/database/GameEngineHardeningTest.php
+git commit -m "feat: integrate multi-round Quiz Race lifecycle"
 ```
 
 ---
 
-## Task 13: Concurrency, Regression, and End-to-End Smoke
+## Task 14: Concurrency and End-to-End Regression
 
-- [ ] **Step 1: Full automated suite**
+- [ ] **Step 1: Full suite**
 
 ```bash
-vendor/bin/phpunit
+./vendor/bin/phpunit
 ```
-
-Expected: all tests pass.
 
 - [ ] **Step 2: Concurrency smoke**
 
-Exercise the same room with parallel requests:
+On one room, submit the last answers while polling and pressing `Tutup Soal`. Assert:
 
-- Submit the last two team answers nearly simultaneously while polling state and pressing `Tutup Ronde`.
-- Assert each team moves once, one `race.round_resolved` event exists, and only one next round is created.
-- Send duplicate answer requests with and without the same idempotency key; assert one answer row and no HTTP 500.
-- Poll multiple clients across `reveal_until`; assert exactly one next round number is created.
+- One answer row per team/question.
+- One movement and score update per team.
+- One `race.question_resolved` event.
+- At most one next question/round.
+- No advancement after finish.
 
-- [ ] **Step 3: Manual smoke - Tanpa Device remains stable**
+Repeat around question reveal and round checkpoint reveal boundaries.
 
-Create `Quiz Race + Tanpa Device`:
+- [ ] **Step 3: Manual default-allocation smoke**
 
-- Add teams from roster.
-- Start.
-- Pick EASY/MEDIUM/HARD.
-- Start timer.
-- Answer.
-- Confirm movement and finish still work.
+- Create Team Device room with 15/15/20.
+- Join at least two teams in separate sessions.
+- Verify mixed difficulty and question numbering.
+- Complete 15 questions without finish; verify Ronde 1 checkpoint and score-only prize.
+- Confirm positions do not change when the prize is awarded.
+- Continue into Ronde 2.
+- Arrange a finish before Ronde 2 quota ends; verify immediate `FINISHED`, `ROUND_INTERRUPTED`, no round prize, and no next question.
+- Verify report contents and delete a disposable room.
 
-- [ ] **Step 4: Manual smoke - Device per Tim**
+- [ ] **Step 4: Question-limit fallback smoke**
 
-Create `Quiz Race + Device per Tim`:
+Use a long track so nobody finishes after all allocated questions. Verify `QUESTION_LIMIT` ranking and finish event.
 
-- Join 2+ teams via PIN.
-- Start from teacher page.
-- Confirm all team devices see same question.
-- Submit answers.
-- Confirm fastest correct gets +3 total.
-- Confirm wrong/timeout gets +0.
-- Confirm round result remains visible before the next question.
-- Pause during an active question, wait beyond the old deadline, resume, and confirm the remaining time continues correctly.
-- Force-close a round early and confirm unanswered teams are recorded as timeout.
-- Play until one team reaches finish.
-- Confirm room status becomes `FINISHED`.
-- If two teams finish in the same round, confirm both are shown as winners.
-- Open the HTML/PDF report and confirm round answers and question statistics are populated.
-- Delete a disposable finished room and confirm no round rows remain.
+- [ ] **Step 5: Regression smoke**
 
-- [ ] **Step 5: Manual smoke - Ular Tangga unaffected**
+- Centralized Quiz Race: tier selection, timer, movement, finish.
+- Ular Tangga Team Device: PIN join, dice, answer, special tiles, finish.
+- Pause/resume both legacy flows.
 
-Create normal `Ular Tangga Kuis + Device per Tim`:
-
-- Join team.
-- Roll dice.
-- Answer.
-- Confirm old turn flow works.
-
-- [ ] **Step 6: Commit only if fixes were needed**
-
-If Task 13 surfaced code changes:
+- [ ] **Step 6: Commit only if fixes were required**
 
 ```bash
-git add <changed files>
-git commit -m "fix: stabilize Quiz Race team-device smoke flow"
+git add <changed-files>
+git commit -m "fix: stabilize multi-round Quiz Race flow"
 ```
 
-If no fixes were needed, do not create an empty checkpoint commit.
+Do not create an empty checkpoint commit.

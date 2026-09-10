@@ -1,7 +1,8 @@
-# Design: Quiz Race Device per Tim - Balapan Serentak
+# Design: Quiz Race Device per Tim - Balapan Serentak Multi-Ronde
 
 **Tanggal:** 2026-09-10
-**Status:** Direvisi setelah review implementasi, siap dijadikan acuan plan
+**Revisi:** 2026-09-11
+**Status:** Disetujui untuk menjadi dasar implementation plan
 **Phase:** Lanjutan setelah `2026-09-10-quiz-race-sprint-tanpa-dadu-plan.md`
 **Terkait:**
 - `docs/superpowers/specs/2026-09-10-quiz-race-mode-design.md`
@@ -12,369 +13,402 @@
 
 ## Ringkasan
 
-Phase 11 sudah membuat `QUIZ_RACE` playable untuk `TEACHER_CENTRALIZED` sebagai Sprint Tanpa Dadu. Phase ini mengerjakan bagian yang sengaja ditunda: `QUIZ_RACE` untuk `TEAM_DEVICE`, disebut **Balapan Serentak**.
+Phase 11 sudah membuat `QUIZ_RACE + TEACHER_CENTRALIZED` playable sebagai Sprint Tanpa Dadu. Phase ini menambahkan `QUIZ_RACE + TEAM_DEVICE` sebagai **Balapan Serentak Multi-Ronde**.
 
-Balapan Serentak tidak memakai dadu dan tidak memakai giliran per tim. Semua tim yang join lewat PIN melihat soal yang sama pada waktu yang sama di perangkat masing-masing. Jawaban benar membuat tim maju, dan tim tercepat di antara jawaban benar mendapat bonus kecepatan. Ronde berulang sampai ada tim mencapai finish.
+Semua tim menerima soal yang sama pada saat yang sama. Jawaban benar menggerakkan kendaraan, dan tim tercepat di antara jawaban benar mendapat bonus gerak. Permainan dibagi menjadi beberapa ronde; setiap ronde berisi beberapa siklus soal. Race langsung selesai setelah resolusi satu soal menghasilkan minimal satu tim di garis finish, walaupun alokasi soal belum habis.
 
-Keputusan arsitektur utama: phase ini menambah model **round bersama** baru, bukan memaksa `game_turns.team_id` atau `game_rooms.current_team_id` yang sekarang memang berarti "satu tim sedang giliran". Ini menjaga implementasi Phase 11 tetap stabil dan membuat dua mesin Quiz Race hidup berdampingan:
+## Istilah yang Dikunci
 
-- `TEACHER_CENTRALIZED`: tetap memakai `game_turns`, `selectDifficultyTier()`, dan `answer()`.
-- `TEAM_DEVICE`: memakai `game_rounds`, `game_round_answers`, dan endpoint khusus round.
+- **Game/race:** keseluruhan permainan sampai ada kendaraan mencapai finish atau seluruh alokasi soal habis.
+- **Ronde:** satu tahap yang berisi beberapa soal, bukan satu soal.
+- **Siklus soal:** satu soal bersama, satu deadline, satu jawaban per tim, lalu satu resolusi gerakan serentak.
+- **Lap/checkpoint ronde:** penanda selesainya seluruh alokasi soal dalam satu ronde.
+- **Hadiah ronde:** tambahan skor saja untuk juara ronde; tidak menambah langkah kendaraan.
 
-## Istilah dan Hadiah
+Contoh konfigurasi utama:
 
-`Ronde` dan `lap` bukan hal yang sama:
+| Ronde/Lap | Jumlah soal maksimum | Kesulitan |
+|---|---:|---|
+| 1 | 15 | Campuran EASY, MEDIUM, HARD |
+| 2 | 15 | Campuran EASY, MEDIUM, HARD |
+| 3 | 20 | Campuran EASY, MEDIUM, HARD |
+| **Total** | **50** | |
 
-- **Ronde** adalah satu siklus soal bersama: soal dibuka, semua tim menjawab, hasil dihitung, lalu hasil ditampilkan. Tim tercepat yang menjawab benar mendapat bonus kecepatan `+2` pada ronde tersebut.
-- **Lap** adalah segmen lintasan. Batas antar-lap adalah **checkpoint**. Setiap tim mendapat bonus checkpoint `+1` ketika tim itu sendiri pertama kali melewati batas lap tersebut.
-- Hadiah ronde diberikan berdasarkan kecepatan jawaban. Hadiah checkpoint diberikan berdasarkan progres masing-masing tim, bukan hanya kepada tim pertama yang mencapai lap.
-- Satu checkpoint hanya boleh memberi hadiah sekali kepada tim yang sama. Bergerak mundur tidak ada di phase ini, sehingga checkpoint yang sudah dilewati tidak dapat dipanen ulang.
+Alokasi 50 soal adalah batas maksimum. Jika ada tim mencapai finish pada soal ke-9 Ronde 2, race selesai pada saat resolusi soal itu dan sisa soal tidak dimainkan.
 
-Dengan demikian, bukan "satu pemenang checkpoint setiap ronde". Dalam satu ronde bisa ada bonus tercepat dan, secara terpisah, satu atau beberapa tim dapat bonus checkpoint karena gerakannya melewati batas lap.
+## Arsitektur
 
-## Status Phase 11 yang Dipakai Ulang
+Jangan memaksa `game_turns.team_id` atau `game_rooms.current_team_id` untuk permainan serentak. Dua mesin Quiz Race hidup berdampingan:
 
-Sudah ada dan harus dipakai ulang:
+- `TEACHER_CENTRALIZED`: tetap memakai `game_turns`, `selectDifficultyTier()`, dan `answer()` dari Phase 11.
+- `TEAM_DEVICE`: memakai `game_rounds`, `game_round_questions`, `game_round_answers`, dan endpoint siklus soal khusus.
 
-- `board_templates.game_mode`, `game_rooms.lap_count`, dan `game_turns.selected_tier`.
-- `RaceTrackService` untuk track length, Boost, Oil Spill, lap, checkpoint, dan tile generation.
-- Seed 3 tema lintasan: Stadion Atletik Senja, Arena Kartun Ceria, Arena Neon Digital.
-- Create Game sudah punya field Quiz Race: tema lintasan, panjang lintasan, jumlah lap, warning bank soal.
-- Controller tim (`/game/{room}/controller`) dan Control Game sudah punya runtime polling, answer list, countdown, event feed, dan board fallback `quiz_race_track`.
+Pembagian tanggung jawab:
 
-Yang perlu diubah dari Phase 11:
+- `RaceRoundService`: pembagian jumlah soal, jadwal difficulty, klasemen ronde, dan hadiah skor ronde.
+- `RaceQuestionService`: resolusi jawaban dan gerakan satu siklus soal secara pure/DB-free.
+- `RaceTrackService`: posisi, Boost, Oil Spill, clamp finish, dan tile generation yang sudah ada.
+- `GameEngine`: transaksi, otorisasi, state transition, event, dan snapshot.
 
-- Larangan `QUIZ_RACE + TEAM_DEVICE` dihapus.
-- Saat Quiz Race dipilih, radio `Device per Tim` tidak lagi disabled.
-- Mode state Quiz Race harus membedakan action berdasarkan `participation_mode`.
+## Konfigurasi Room
 
-## Mekanik Balapan Serentak
+Room `QUIZ_RACE + TEAM_DEVICE` menyimpan:
 
-### Ronde
+- `race_question_limit`, default `50`.
+- `race_round_question_counts_json`, default `[15, 15, 20]`.
+- `race_round_winner_bonus_points`, default `100`.
+- `lap_count` selalu sama dengan jumlah item alokasi ronde.
+- `max_position` tetap berasal dari panjang lintasan yang dipilih guru.
+- `finish_rule` selalu `clamp_finish`.
+- `near_finish_bonus` selalu `false`.
 
-Satu ronde memiliki satu soal dan satu deadline bersama.
+Validasi:
 
-Alur:
+- Minimal 1 dan maksimal 5 ronde.
+- Setiap ronde minimal 1 soal.
+- Total alokasi minimal 3 dan maksimal 100 soal.
+- `race_question_limit` harus sama dengan jumlah seluruh alokasi ronde.
+- Default `[15, 15, 20]` menghasilkan total 50 soal dan 3 lap.
 
-1. Guru membuat room `QUIZ_RACE` + `TEAM_DEVICE`.
-2. Tim join lewat PIN seperti Ular Tangga biasa.
-3. Guru klik Start.
-4. Engine membuat round pertama dalam state `ROUND_ACTIVE`, memilih satu soal, dan memasang deadline.
-5. Semua device tim melihat soal yang sama.
-6. Tiap tim boleh submit jawaban sekali.
-7. Round ditutup saat semua tim sudah menjawab, deadline habis, atau guru memilih force resolve.
-8. Satu request memenangkan atomic claim `ROUND_ACTIVE -> ROUND_RESOLVING`; request lain tidak boleh menghitung gerakan lagi.
-9. Engine menghitung dan menyimpan gerak semua tim sekaligus, lalu round menjadi `ROUND_RESOLVED` selama fase hasil singkat.
-10. Jika belum ada pemenang, setelah fase hasil berakhir engine membuat round berikutnya secara otomatis.
+## Alur Game
 
-State room tetap `PLAYING` selama balapan berjalan dan berubah ke `FINISHED` saat minimal satu tim mencapai `max_position`.
+1. Guru membuat room `QUIZ_RACE + TEAM_DEVICE` dan menentukan alokasi soal per ronde.
+2. Tim join melalui PIN selama room masih `LOBBY`.
+3. Guru menekan Start.
+4. Engine membuat Ronde 1 dan Siklus Soal 1.
+5. Semua device melihat soal dan deadline yang sama.
+6. Setiap tim boleh submit satu jawaban.
+7. Siklus ditutup saat semua tim menjawab, deadline habis, atau guru memilih `Tutup Soal`.
+8. Engine menyelesaikan semua jawaban dan gerakan secara serentak.
+9. Hasil soal ditampilkan singkat.
+10. Jika ada tim mencapai finish, race selesai saat itu juga.
+11. Jika belum finish dan jatah soal ronde belum habis, engine membuka soal berikutnya.
+12. Jika jatah soal ronde habis, engine menghitung juara ronde, memberikan bonus skor, dan menampilkan checkpoint ronde.
+13. Setelah checkpoint, ronde berikutnya dimulai otomatis.
+14. Jika seluruh alokasi soal habis tanpa ada tim mencapai finish, fallback winner ditentukan dari posisi dan skor.
 
-State round:
+## Siklus Soal
 
-- `ROUND_ACTIVE`: soal dapat dijawab.
-- `ROUND_RESOLVING`: lock internal sementara; tidak boleh ada jawaban atau resolver kedua.
-- `ROUND_RESOLVED`: hasil dapat dilihat sampai `reveal_until`.
-- `ROUND_CLOSED`: fase hasil selesai dan, jika room belum selesai, round berikutnya sudah dibuat.
-
-Transisi `ROUND_ACTIVE -> ROUND_RESOLVING` dan `ROUND_RESOLVED -> ROUND_CLOSED` harus berupa conditional update di dalam transaksi. `Idempotency-Key` tetap dipakai, tetapi bukan pengganti lock transaksi.
-
-### Skema Gerak
-
-Gerak dasar:
+Satu siklus soal memiliki tepat satu soal dan satu deadline bersama. Gerak dasar:
 
 | Kondisi | Gerak |
 |---|---:|
 | Jawaban benar | +1 |
 | Jawaban salah | +0 |
-| Tidak menjawab sampai deadline | +0 |
+| Timeout/tidak menjawab | +0 |
 | Tercepat di antara jawaban benar | +2 tambahan |
 
-Total normal tercepat benar = +3.
+Tim tercepat yang benar bergerak total normal `+3`. Kecepatan tidak pernah menguntungkan jawaban salah.
 
-Jika ada seri tercepat yang benar, semua tim dengan waktu tercepat yang sama mendapat bonus +2. Ini menghindari keputusan arbitrer ketika dua submit masuk dalam waktu server yang sama.
+Jika beberapa jawaban benar mempunyai `response_ms` yang benar-benar sama, semuanya mendapat bonus tercepat. Waktu dihitung dari epoch milidetik server; helper berbasis `time()` satu detik tidak boleh dipakai.
 
-Kecepatan dihitung dari `response_ms` berbasis waktu server dengan resolusi milidetik. Implementasi tidak boleh memakai helper `time()` yang hanya beresolusi satu detik. Round menyimpan epoch mulai/deadline dan answer menyimpan epoch submit agar hasil konsisten pada SQLite maupun MySQL.
+## Kesulitan Soal
 
-### Kesulitan Soal
+Setiap ronde berisi campuran `EASY`, `MEDIUM`, dan `HARD`. Difficulty tidak lagi ditentukan dari posisi pemimpin.
 
-Karena semua tim mendapat soal yang sama, kesulitan tidak dipilih per tim. Kesulitan round ditentukan otomatis dari progres posisi pemimpin saat round dibuat:
+Engine membuat `difficulty_schedule_json` ketika ronde dibuat. Distribusi dibuat seimbang, dengan selisih jumlah antar-difficulty maksimal satu. Untuk contoh:
 
-- Progres `< 30%`: `EASY`.
-- Progres `>= 30%` dan `< 70%`: `MEDIUM`.
-- Progres `>= 70%`: `HARD`.
+- 15 soal: 5 EASY, 5 MEDIUM, 5 HARD.
+- 20 soal: 7 EASY, 6 MEDIUM, 7 HARD.
 
-Progres dihitung dengan `(leader_position - 1) / (max_position - 1)` dan di-clamp ke `0..1`. Jika beberapa tim memimpin pada posisi yang sama, hasilnya tetap sama. Lap tetap dipakai sebagai checkpoint visual/progres; pembagian 30/40/30 memakai posisi agar tetap konsisten untuk semua nilai `lap_count` 1-10. Kalau bank soal untuk difficulty itu kosong, gunakan fallback `selectQuestion()` yang sudah ada: tetap dari topik terpilih, lalu recycle jika pool habis. Riwayat soal terpakai wajib membaca `game_rounds` selain `game_turns`.
+Urutan diacak sekali di server lalu disimpan agar restart/polling tidak mengubah jadwal. Pemilihan soal tetap dibatasi pada topik room. Jika pool difficulty tertentu kosong, fallback ke soal published lain dalam topik terpilih; recycle baru dilakukan setelah seluruh pool relevan habis.
 
-### Kotak Spesial Phase Ini
+Riwayat soal terpakai wajib membaca `game_round_questions.question_id` selain `game_turns`.
 
-Phase ini tetap serasi dengan Phase 11 dan hanya memakai dua tile yang sudah stabil:
+## Ronde, Checkpoint, dan Hadiah
 
-| Tile | Efek di Balapan Serentak |
+Ronde selesai hanya setelah seluruh siklus soal yang dialokasikan untuk ronde itu resolved **dan** resolusi terakhir tidak menghasilkan finisher. Mencapai garis finish selalu mengambil prioritas atas penyelesaian ronde: race langsung berhenti dan ronde aktif menjadi `ROUND_INTERRUPTED`, termasuk jika finish terjadi tepat pada soal terakhir ronde.
+
+Juara ronde dihitung dari skor yang diperoleh **di ronde tersebut sebelum hadiah ronde**:
+
+1. Skor ronde tertinggi.
+2. Jika seri, jawaban benar terbanyak dalam ronde.
+3. Jika masih seri, jumlah `response_ms` jawaban benar paling rendah.
+4. Jika seluruh kriteria tetap sama, semua tim terkait menjadi co-winner ronde.
+
+Setiap juara/co-winner ronde menerima tambahan skor `race_round_winner_bonus_points`, default `100`. Hadiah dicatat sebagai score transaction `RACE_ROUND_WINNER`. Hadiah tidak mengubah posisi, tidak memicu tile, dan tidak diberikan untuk ronde yang terhenti karena race sudah finish. Karena penentuan finisher dijalankan lebih dahulu, hadiah ronde tidak dapat mengubah pemenang race.
+
+Checkpoint ronde adalah fase hasil/klasemen, bukan bonus langkah `+1`. Bonus checkpoint langkah milik Sprint Tanpa Dadu Phase 11 tetap tidak diubah.
+
+## Skor dan Pemenang Race
+
+Skor per siklus memakai konfigurasi room yang sudah ada:
+
+- Jawaban benar: poin benar, default `100`.
+- Time bonus: maksimal sesuai konfigurasi, dihitung dari `response_ms` jawaban itu.
+- Streak bonus: tetap berlaku per tim dan direset pada awal setiap ronde agar kompetisi ronde adil.
+- Jawaban salah dan timeout: mengikuti konfigurasi penalti room.
+- Bonus tercepat `+2`, Boost, dan Oil Spill memengaruhi posisi, bukan skor.
+- Hadiah juara ronde menambah skor saja.
+
+Pemenang normal adalah tim yang mencapai `max_position` setelah resolusi suatu siklus soal. Tim dengan skor tinggi yang belum finish tidak dapat mengalahkan tim yang sudah finish.
+
+Jika beberapa tim mencapai finish dalam resolusi yang sama:
+
+1. Skor total tertinggi di antara para finisher.
+2. Jika seri, jawaban benar total terbanyak.
+3. Jika masih seri, jumlah `response_ms` jawaban benar paling rendah.
+4. Jika seluruh kriteria sama, hasilnya co-winner.
+
+Jika semua soal maksimum habis dan tidak ada tim mencapai finish:
+
+1. Posisi tertinggi.
+2. Skor total tertinggi.
+3. Jawaban benar total terbanyak.
+4. Jumlah `response_ms` jawaban benar paling rendah.
+5. Co-winner jika masih identik.
+
+Event `game.finished` membawa `finish_reason` (`TRACK_FINISH` atau `QUESTION_LIMIT`), `winner_team_uuids`, dan compatibility field `winner_team_uuid` berisi UUID pertama.
+
+## Tile Khusus
+
+Phase ini hanya memakai tile Phase 11 yang sudah stabil:
+
+| Tile | Efek per siklus soal |
 |---|---|
-| Boost | Setelah posisi landed dihitung, langsung +2 kotak tambahan. |
-| Oil Spill | Tim tetap boleh menjawab round berikutnya, tapi tidak eligible mendapat bonus tercepat +2 pada round berikutnya. Setelah round berikutnya selesai, lock habis. |
+| Boost | Setelah posisi landed dihitung, langsung `+2` langkah dan clamp ke finish. |
+| Oil Spill | Tim tetap menjawab soal berikutnya, tetapi tidak eligible mendapat bonus tercepat pada satu siklus soal berikutnya. |
 
-Lap checkpoint tetap memberi +1 langkah saat tim melewati batas lap. Reward ini konsisten dengan Phase 11 dan tetap menjadi placeholder yang nanti bisa diganti Nitro.
+Urutan resolusi:
 
-Urutan resolusi gerak per tim:
+1. Tentukan jawaban benar/salah/timeout.
+2. Tentukan bonus tercepat setelah mengecualikan Oil Spill lock lama.
+3. Hitung posisi landed dari langkah dasar + bonus tercepat.
+4. Terapkan satu tile pada posisi landed.
+5. Clamp posisi akhir ke `max_position`.
+6. Naikkan penghitung soal resolved pada ronde.
+7. Evaluasi finisher setelah seluruh tim dihitung.
+8. Jika ada finisher, akhiri race sebelum evaluasi checkpoint/hadiah ronde.
 
-1. Hitung langkah dasar dari jawaban dan bonus tercepat.
-2. Tentukan kotak landed.
-3. Terapkan Boost atau Oil Spill pada kotak landed.
-4. Jika perpindahan akhir memasuki lap baru, berikan bonus checkpoint `+1` satu kali dan clamp ke finish.
-5. Bonus checkpoint tidak memicu tile khusus kedua secara berantai.
+Oil Spill lama dikonsumsi pada siklus itu. Jika tim mendarat di Oil Spill lagi pada siklus yang sama, lock baru disimpan untuk siklus berikutnya.
 
-Oil Spill yang sudah aktif dibaca sebelum bonus tercepat dihitung, lalu dikonsumsi pada ronde itu. Jika tim mendarat pada Oil Spill lagi dalam ronde yang sama, lock baru disimpan untuk ronde berikutnya.
+## State Machine
 
-### Skor dan Streak
+State ronde:
 
-Gerakan dan skor adalah dua hal berbeda. Untuk menjaga laporan Phase 11 tetap serasi:
+- `ROUND_ACTIVE`: masih mempunyai siklus soal yang berjalan/akan berjalan.
+- `ROUND_COMPLETED`: kuota soal ronde habis tanpa finisher dan hadiah ronde sudah disimpan.
+- `ROUND_INTERRUPTED`: race finish mengambil prioritas sebelum penyelesaian ronde, termasuk pada soal terakhir ronde.
+- `ROUND_CLOSED`: checkpoint selesai dan ronde berikutnya sudah dibuat.
 
-- Jawaban benar/salah memakai poin dasar dari konfigurasi room yang sudah ada.
-- Timeout diperlakukan seperti jawaban salah untuk poin dan mereset streak.
-- Time bonus, jika aktif, dihitung dari `response_ms` milik jawaban tersebut, bukan waktu saat round di-resolve.
-- Streak bonus tetap per tim; tim yang salah atau timeout kembali ke streak 0.
-- `near_finish_bonus` tetap nonaktif untuk semua Quiz Race.
-- Bonus tercepat, Boost, dan checkpoint mengubah posisi tetapi tidak menambah poin kecuali nanti ada keputusan produk terpisah.
+State siklus soal:
 
-### Finish Bersamaan
+- `QUESTION_ACTIVE`: jawaban diterima.
+- `QUESTION_RESOLVING`: atomic claim internal; jawaban baru ditolak.
+- `QUESTION_RESOLVED`: hasil gerakan ditampilkan sampai `reveal_until`.
+- `QUESTION_CLOSED`: siklus berikutnya atau checkpoint ronde sudah dibuat.
 
-Karena gerakan diselesaikan serentak, lebih dari satu tim dapat mencapai finish pada ronde yang sama. Semua tim tersebut adalah **co-winner**. Event `game.finished` membawa `winner_team_uuids` dan tetap membawa `winner_team_uuid` berisi UUID pertama sebagai compatibility field untuk consumer lama. Projector dan laporan harus dapat menandai seluruh co-winner.
-
-### Out of Scope
-
-Tetap ditunda agar phase ini tidak melebar:
-
-- Nitro.
-- Pit Stop.
-- Duel Susul.
-- Renderer lintasan kustom penuh.
-- Turnamen multi-room.
+Transisi `QUESTION_ACTIVE -> QUESTION_RESOLVING` dan `QUESTION_RESOLVED -> QUESTION_CLOSED` harus berupa conditional update dalam transaksi. Insert jawaban melakukan conditional increment `answer_count` pada row siklus yang sama agar submit dan resolver terserialisasi. Idempotency key bukan pengganti lock transaksi.
 
 ## Model Data
 
-Tambahkan dua tabel baru.
+Tambahkan konfigurasi room melalui migration:
+
+- `race_question_limit` integer nullable.
+- `race_round_question_counts_json` text nullable.
+- `race_round_winner_bonus_points` integer nullable.
 
 ### `game_rounds`
 
-Mewakili satu ronde bersama dalam room `QUIZ_RACE + TEAM_DEVICE`.
-
-Kolom inti:
-
-- `id`
-- `public_uuid`
-- `room_id`
-- `round_number`
-- `state`: `ROUND_ACTIVE`, `ROUND_RESOLVING`, `ROUND_RESOLVED`, `ROUND_CLOSED`
-- `question_id`
-- `difficulty`
-- `answer_count`, default `0`
-- `started_at`
-- `started_at_epoch_ms`
-- `deadline_at`
-- `deadline_epoch_ms`
-- `paused_remaining_ms`
-- `resolved_at`
-- `reveal_until`
-- `reveal_until_epoch_ms`
-- `fastest_team_ids_json`
-- `winner_team_ids_json`
-- `movement_summary_json`
-- `created_at`
-- `updated_at`
+- `id`, `public_uuid`, `room_id`, `round_number`.
+- `state`.
+- `question_target_count`, `question_resolved_count`.
+- `difficulty_schedule_json`.
+- `round_winner_team_ids_json`, `round_score_summary_json`.
+- `started_at`, `completed_at`.
+- `reveal_until`, `reveal_until_epoch_ms`, `paused_remaining_ms`.
+- timestamps.
 
 Constraint/index:
 
 - Unique `public_uuid`.
 - Unique `room_id + round_number`.
 - Index `room_id + state`.
-- Relasi logis `room_id -> game_rooms.id` dan `question_id -> questions.id`; cleanup eksplisit tetap wajib karena schema lama tidak mengandalkan cascade foreign key.
 
-### `game_round_answers`
+### `game_round_questions`
 
-Mewakili jawaban satu tim untuk satu ronde.
-
-Kolom inti:
-
-- `id`
-- `public_uuid`
-- `round_id`
-- `team_id`
-- `question_id`
-- `option_id`
-- `answer_text`
-- `is_correct`
-- `outcome`: `CORRECT`, `WRONG`, `TIMEOUT`
-- `answered_at`
-- `answered_at_epoch_ms`
-- `response_ms`
-- `created_at`
+- `id`, `public_uuid`, `round_id`, `question_number`.
+- `question_id`, `difficulty`, `state`, `answer_count`.
+- `started_at`, `started_at_epoch_ms`.
+- `deadline_at`, `deadline_epoch_ms`, `paused_remaining_ms`.
+- `resolved_at`, `reveal_until`, `reveal_until_epoch_ms`.
+- `fastest_team_ids_json`, `finisher_team_ids_json`, `movement_summary_json`.
+- timestamps.
 
 Constraint/index:
 
 - Unique `public_uuid`.
-- Unique `round_id + team_id` supaya satu tim hanya menjawab sekali.
-- Index `round_id + is_correct + response_ms`.
-- Relasi logis ke round, team, question, dan option harus divalidasi di engine serta dibersihkan eksplisit saat room dihapus.
+- Unique `round_id + question_number`.
+- Index `round_id + state`.
 
-Ketika round di-resolve, engine membuat row `TIMEOUT` untuk setiap tim yang belum submit (`option_id`, `answer_text`, dan `response_ms` null). Dengan begitu satu round yang resolved selalu mempunyai tepat satu outcome per tim dan laporan dapat membedakan salah dari tidak menjawab. `answer_count` hanya menghitung submit nyata, bukan row timeout sintetis.
+### `game_round_answers`
+
+- `id`, `public_uuid`, `round_question_id`, `team_id`, `question_id`.
+- `option_id`, `answer_text`, `is_correct`.
+- `outcome`: `CORRECT`, `WRONG`, `TIMEOUT`.
+- `answered_at`, `answered_at_epoch_ms`, `response_ms`.
+- `score_delta`, `score_breakdown_json`.
+- timestamps.
+
+Constraint/index:
+
+- Unique `public_uuid`.
+- Unique `round_question_id + team_id`.
+- Index `round_question_id + is_correct + response_ms`.
+
+Saat resolve, setiap tim yang belum submit mendapat row sintetis `TIMEOUT`. Satu siklus resolved selalu memiliki tepat satu outcome per tim. Cleanup dilakukan eksplisit karena schema lama tidak mengandalkan cascade foreign key.
 
 ## API
 
-Endpoint baru:
+Endpoint baru memakai istilah siklus soal, bukan ronde:
 
-- `POST /api/v1/rooms/{roomUuid}/race-round/answer`
-- `POST /api/v1/rooms/{roomUuid}/race-round/resolve`
+- `POST /api/v1/rooms/{roomUuid}/race-question/answer`
+- `POST /api/v1/rooms/{roomUuid}/race-question/resolve`
 
-`answer` dipakai device tim. Validasi memakai `TeamSessionService::assertTeamSession()`.
+`answer` memerlukan session tim valid. `resolve` memerlukan owner room dan `force: true`; tim yang belum menjawab menjadi timeout.
 
-`resolve` dipakai Control Game untuk tombol "Tutup Ronde". Validasi memakai `TenantContext::assertRoomOwner()` dan mengirim `force: true`; tim yang belum menjawab dianggap timeout. Engine juga resolve otomatis tanpa flag force dari `raceRoundAnswer()` saat semua tim sudah menjawab atau dari polling saat deadline lewat.
+Scope idempotensi:
 
-Endpoint lama tetap:
+- `race-question-answer:{roomUuid}:{roundQuestionUuid}:{teamUuid}`
+- `race-question-resolve:{roomUuid}:{roundQuestionUuid}`
 
-- `roll` hanya untuk Ular Tangga.
-- `select-tier` hanya untuk Quiz Race Tanpa Device.
-- `answer` tetap untuk turn-based flow.
+Endpoint `roll`, `select-tier`, dan `answer` lama tetap khusus flow turn-based.
 
 ## Snapshot Publik
 
-Snapshot perlu menambah key baru:
+Tambahkan field secara additive:
 
 ```json
 {
   "current_round": {
     "uuid": "...",
-    "state": "ROUND_ACTIVE",
     "round_number": 1,
-    "question": {},
-    "deadline_at": "...",
-    "deadline_epoch_ms": 123,
-    "answers": [
-      {"team_uuid": "...", "answered": true, "is_correct": null}
-    ],
-    "fastest_team_uuids": []
+    "state": "ROUND_ACTIVE",
+    "question_target_count": 15,
+    "question_resolved_count": 4,
+    "current_question": {
+      "uuid": "...",
+      "question_number": 5,
+      "state": "QUESTION_ACTIVE",
+      "question": {},
+      "deadline_epoch_ms": 123,
+      "answers": []
+    }
   },
-  "last_resolved_round": null
+  "last_resolved_question": null,
+  "last_completed_round": null
 }
 ```
 
-Saat `ROUND_RESOLVED`, `current_round` tetap menunjuk ronde hasil sampai `reveal_until`; belum ada soal baru yang dapat dijawab. Setelah round berikutnya aktif, `last_resolved_round` mempertahankan ringkasan ronde sebelumnya agar refresh/reconnect tidak kehilangan feedback.
+Saat soal aktif, payload hanya membuka siapa yang sudah menjawab. Option terpilih, correctness, dan response time tim lain tidak boleh muncul sebelum resolve. Hasil resolved tetap tersedia melalui `last_resolved_question` setelah soal berikutnya aktif agar reconnect tidak kehilangan feedback.
 
-Untuk device tim, jawaban benar/salah tim lain tidak dibuka sebelum round resolved. Yang aman ditampilkan saat active: siapa sudah menjawab dan countdown. Setelah resolved, tampilkan ringkasan gerak. Snapshot controller dapat memakai UUID tim dari session untuk memilih ringkasan miliknya, tetapi payload projector/owner tetap boleh melihat ringkasan seluruh tim setelah resolve.
-
-`mode_state` untuk `QUIZ_RACE + TEAM_DEVICE`:
+`mode_state` untuk Team Device:
 
 ```json
 {
   "key": "QUIZ_RACE",
   "renderer": "quiz_race_track",
-  "actions": ["race_answer"],
-  "round_model": "shared_round",
-  "current_round_state": "ROUND_ACTIVE",
+  "actions": ["race_question_answer"],
+  "round_model": "multi_question_round",
   "can_answer": true
 }
 ```
 
 ## Concurrency dan Idempotensi
 
-- Insert jawaban dilindungi unique `round_id + team_id`. Duplicate submit dengan idempotency key yang sama mengembalikan response pertama; duplicate tanpa key menghasilkan domain response stabil, bukan error 500.
-- Sebelum insert, transaksi answer melakukan conditional increment `answer_count = answer_count + 1` hanya jika round masih `ROUND_ACTIVE` dan deadline belum lewat. Increment dan insert harus commit/rollback bersama. Ini menyerialkan answer dengan resolver pada row round yang sama.
-- Resolver harus melakukan conditional update berdasarkan `id` dan state `ROUND_ACTIVE`. Hanya resolver dengan `affectedRows() === 1` yang boleh mengubah tim, skor, efek, dan room.
-- Advancement setelah fase hasil memakai pola conditional update yang sama pada `ROUND_RESOLVED -> ROUND_CLOSED`, kemudian membuat round nomor berikutnya dalam transaksi yang sama.
-- Jika transaksi gagal, state claim ikut rollback. Event/realtime tidak boleh mempublikasikan hasil yang belum committed.
-- Unique `room_id + round_number` adalah guard tambahan, bukan mekanisme lock utama.
+- Conditional increment `answer_count` dan insert answer berada dalam satu transaksi.
+- Hanya resolver yang berhasil mengubah state ke `QUESTION_RESOLVING` boleh mengubah posisi/skor.
+- Advancement soal dan ronde memakai conditional transition dan unique number guard.
+- Duplicate submit tanpa idempotency key menghasilkan response domain stabil, bukan HTTP 500.
+- Event dan realtime tidak boleh mempublikasikan hasil transaksi yang rollback.
+- Polling boleh memicu timeout/advancement hanya melalui atomic claim.
 
-Scope idempotensi kanonik:
+## Pause dan Resume
 
-- `race-round-answer:{roomUuid}:{roundUuid}:{teamUuid}`
-- `race-round-resolve:{roomUuid}:{roundUuid}`
-
-Event `race.answer_submitted` hanya membawa identitas tim dan status sudah menjawab. Option, `is_correct`, dan response time tim tidak boleh dipublikasikan selama round masih active.
-
-## Pause, Resume, dan Lifecycle
-
-- Pause menyimpan sisa waktu round aktif ke `paused_remaining_ms`, mengosongkan deadline aktif, dan menolak answer selama room `PAUSED`.
-- Resume membangun deadline baru dari sisa waktu tersebut. Fase hasil yang sedang berjalan juga harus mempertahankan sisa durasi reveal atau secara eksplisit diselesaikan sebelum pause.
-- `Skip Turn` dan `Start Timer` tidak tersedia untuk shared-round Quiz Race.
-- `Force Timeout` pada UI diganti label kontekstual `Tutup Ronde` dan memanggil endpoint resolve dengan `force: true`.
-- Polling boleh memicu resolve deadline atau advancement reveal, tetapi selalu melalui atomic claim; GET tidak boleh melakukan mutasi tanpa guard tersebut.
-
-## Integrasi Data Platform
-
-- `usedQuestionIdsForRoom()` memasukkan `game_rounds.question_id` agar recycle pool tetap benar.
-- Proteksi edit/hapus soal aktif memasukkan question pada active/resolving race round.
-- `deleteRoom()` menghapus `game_round_answers`, `game_rounds`, dan idempotency key race sebelum menghapus team/room.
-- `GameReportService` menggabungkan jawaban turn-based dan round-based ke bentuk laporan yang sama.
-- Laporan, projector, leaderboard, dan event `game.finished` mendukung co-winner.
+- Pause menyimpan sisa deadline soal atau sisa fase reveal ke `paused_remaining_ms` dan mengosongkan deadline aktif.
+- Answer ditolak selama room `PAUSED`.
+- Resume membangun deadline baru dari sisa waktu.
+- `Skip Turn` dan `Start Timer` disembunyikan untuk Team Device.
+- `Force Timeout` dilabeli `Tutup Soal` dan memanggil endpoint resolve dengan `force: true`.
 
 ## UI
 
 ### Create Game
 
-Saat mode `Quiz Race` dipilih:
+- Quiz Race menyediakan `Tanpa Device` dan `Device per Tim`.
+- Untuk Team Device, tampilkan editor alokasi ronde dengan default `15, 15, 20`.
+- Total soal dihitung otomatis dari alokasi.
+- `Jumlah Lap` mengikuti jumlah ronde dan tidak diedit terpisah.
+- Warning bank soal membandingkan jumlah soal published topik terpilih dengan total alokasi.
+- Field panjang lintasan dan tema tetap tersedia.
 
-- `Tanpa Device (Terpusat)` tetap tersedia.
-- `Device per Tim` juga tersedia.
-- Field lintasan yang sudah ada tetap dipakai untuk dua participation mode.
-- Warning bank soal disesuaikan:
-  - Tanpa Device: `jumlah_tim x ceil(panjang_lintasan / 2)`.
-  - Device per Tim: `ceil(panjang_lintasan / 1.5)`.
+### Controller Tim
 
-### Controller Device Tim
+- Menampilkan `Ronde X/Y` dan `Soal A/B`.
+- Tidak menampilkan dadu atau tombol difficulty.
+- Setelah submit: `Jawaban terkirim, menunggu soal ditutup`.
+- Setelah resolve: hasil jawaban, bonus tercepat, gerakan, tile, posisi, dan skor.
+- Saat checkpoint: juara ronde dan bonus skor.
 
-Untuk `QUIZ_RACE + TEAM_DEVICE`:
+### Control Game dan Projector
 
-- Sembunyikan tombol Lempar Dadu.
-- Sembunyikan tombol EASY/MEDIUM/HARD.
-- Tampilkan soal aktif round bersama.
-- Tim bisa menjawab sekali.
-- Setelah menjawab, device menampilkan status "Jawaban terkirim, menunggu ronde selesai".
+- Menampilkan ronde, nomor soal, difficulty, countdown, dan jumlah tim menjawab.
+- Tombol `Tutup Soal` hanya saat `QUESTION_ACTIVE`.
+- Menampilkan klasemen checkpoint dan hadiah ronde.
+- Race finish overlay muncul segera setelah resolusi yang mencapai finish.
 
-### Control Game Guru
+## Integrasi Platform
 
-Untuk `QUIZ_RACE + TEAM_DEVICE`:
+- Riwayat pemilihan soal memasukkan `game_round_questions`.
+- Proteksi edit/hapus soal memeriksa active/resolving round question.
+- `deleteRoom()` membersihkan answers, round questions, rounds, dan idempotency key terkait.
+- `GameReportService` menggabungkan jawaban turn-based dan round-based.
+- Laporan memuat round/question number, outcome, response time, score breakdown, juara ronde, dan pemenang race.
+- Projector dan laporan mendukung tie-break dan co-winner.
 
-- Tampilkan status round: nomor round, jumlah tim sudah menjawab, deadline.
-- Tampilkan tombol "Tutup Ronde" hanya jika round masih active.
-- Tidak ada roster manual, karena tim join lewat PIN.
-- Tidak ada Start Timer manual per soal; round langsung punya deadline ketika dibuat.
-- Saat hasil ronde ditampilkan, tombol jawab nonaktif dan ringkasan gerak terlihat sebelum ronde berikutnya.
-
-## Realtime/Event
+## Event
 
 Event baru:
 
 - `race.round_started`
+- `race.question_started`
 - `race.answer_submitted`
-- `race.round_resolved`
+- `race.question_resolved`
+- `race.round_completed`
+- `race.round_interrupted`
 
-Event yang tetap dipakai:
+Event lama yang tetap dipakai:
 
 - `room.team_joined`
 - `game.started`
 - `tile.special_triggered`
-- `lap.checkpoint`
 - `game.finished`
 
-`race.round_resolved` memuat movement summary dan daftar fastest team. Penyelesaian seluruh game tetap memakai satu event kanonik `game.finished`; tidak ada event duplikat `race.round_finished`.
+`game.finished` adalah event kanonik akhir race; jangan membuat event akhir duplikat.
+
+## Out of Scope
+
+- Nitro.
+- Pit Stop.
+- Duel Susul.
+- Editor tema/lintasan kustom penuh.
+- Turnamen multi-room.
 
 ## Acceptance Criteria
 
-- Guru bisa membuat room `Quiz Race` dengan `Device per Tim`.
-- Tim bisa join lewat PIN dan membuka controller masing-masing.
-- Start membuat round aktif dengan soal yang sama untuk semua device.
-- Setiap tim hanya bisa menjawab sekali per round.
-- Benar +1, tercepat benar +2, salah/timeout +0.
-- Boost, Oil Spill, dan checkpoint +1 bekerja untuk round bersama.
-- Round hanya di-resolve sekali walaupun jawaban terakhir, polling, dan force resolve datang bersamaan.
-- Jawaban yang balapan dengan penutupan deadline tidak pernah tersimpan pada round yang sudah di-resolve.
-- Hasil round terlihat sebelum soal berikutnya aktif dan tetap tersedia setelah reconnect.
-- Pause/resume mempertahankan sisa waktu round.
-- Tombol Tutup Ronde dapat force resolve sebelum deadline dan mencatat tim yang belum menjawab sebagai timeout.
-- Pemilihan soal tidak mengulang sebelum pool round-based habis.
-- Jika tim mencapai finish, room menjadi `FINISHED`.
-- Semua tim yang mencapai finish pada resolusi yang sama dicatat sebagai co-winner.
-- Laporan room memuat jawaban, statistik soal, skor, dan pemenang Quiz Race Team Device.
-- Menghapus room membersihkan seluruh row round dan idempotency terkait.
-- Quiz Race Tanpa Device tetap berjalan seperti Phase 11.
-- Ular Tangga Kuis tetap berjalan seperti sebelumnya.
+- Guru dapat membuat Quiz Race Device per Tim dengan alokasi default 15/15/20.
+- Ronde berisi beberapa siklus soal dan snapshot menampilkan nomor ronde/soal dengan benar.
+- Setiap siklus menampilkan soal yang sama kepada semua tim dan menerima satu jawaban per tim.
+- Benar `+1`, tercepat benar `+2`, salah/timeout `+0` gerak.
+- Setiap ronde mempunyai campuran EASY/MEDIUM/HARD sesuai jadwal persisted.
+- Selesai kuota ronde menghasilkan checkpoint, klasemen, dan bonus skor juara ronde.
+- Hadiah ronde tidak mengubah posisi kendaraan.
+- Race langsung selesai ketika resolusi soal menghasilkan finisher, walaupun ronde/total soal belum habis.
+- Ronde yang terpotong finish berstatus `ROUND_INTERRUPTED` dan tidak memberi hadiah ronde.
+- Finish pada soal terakhir ronde tetap menghasilkan `ROUND_INTERRUPTED`; terminasi race diproses sebelum checkpoint dan hadiah ronde.
+- Jika beberapa tim finish bersamaan, tie-break skor, akurasi, dan waktu diterapkan.
+- Jika semua soal habis tanpa finisher, fallback winner diterapkan.
+- Resolve/submit/advancement aman dari request bersamaan dan tidak menggandakan gerak/skor.
+- Pause/resume mempertahankan sisa waktu.
+- Laporan dan penghapusan room mencakup seluruh data multi-ronde.
+- Quiz Race Tanpa Device dan Ular Tangga tetap lulus regression suite.
