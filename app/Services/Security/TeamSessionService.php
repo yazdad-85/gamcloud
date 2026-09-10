@@ -4,9 +4,9 @@ namespace App\Services\Security;
 
 use App\Models\GameRoomModel;
 use App\Models\GameTeamModel;
+use CodeIgniter\Exceptions\PageNotFoundException;
 use Config\Game;
 use DomainException;
-use Throwable;
 
 class TeamSessionService
 {
@@ -67,7 +67,7 @@ class TeamSessionService
 
         try {
             (new TenantContext())->assertRoomOwner($roomUuid);
-        } catch (Throwable) {
+        } catch (PageNotFoundException | DomainException) {
             return false;
         }
 
