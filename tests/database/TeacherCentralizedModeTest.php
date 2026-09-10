@@ -2,9 +2,16 @@
 
 use App\Database\Seeds\DemoGameSeeder;
 use App\Models\GameRoomModel;
+use App\Models\TeacherModel;
 use App\Services\Game\GameEngine;
+use App\Services\Game\Uuid;
+use App\Services\Security\TeamSessionService;
+use CodeIgniter\Shield\Entities\User;
+use CodeIgniter\Shield\Models\UserModel;
+use CodeIgniter\Shield\Test\AuthenticationTesting;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use CodeIgniter\Test\FeatureTestTrait;
 
 /**
  * @internal
@@ -12,8 +19,10 @@ use CodeIgniter\Test\DatabaseTestTrait;
 final class TeacherCentralizedModeTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
+    use FeatureTestTrait;
+    use AuthenticationTesting;
 
-    protected $namespace = 'App';
+    protected $namespace = ['App', 'CodeIgniter\Shield', 'CodeIgniter\Settings'];
     protected $seed = DemoGameSeeder::class;
 
     public function testCreateRoomDefaultsToTeamDeviceParticipationMode(): void
@@ -46,5 +55,72 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
         ]);
 
         $this->assertSame('TEAM_DEVICE', $snapshot['room']['participation_mode']);
+    }
+
+    public function testRoomOwnerActingAsTeacherBypassesTeamTokenInCentralizedRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Auth Bypass Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Otorisasi')['team'];
+
+        $this->actingAsTeacherOwner(1);
+
+        $asserted = (new TeamSessionService())->assertTeamSession($room['uuid'], $team['public_uuid']);
+        $this->assertSame($team['public_uuid'], $asserted['public_uuid']);
+    }
+
+    public function testRoomOwnerBypassIsInactiveForTeamDeviceRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Auth Bypass Inactive Test', [
+            'participation_mode' => 'TEAM_DEVICE',
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Device')['team'];
+
+        $this->actingAsTeacherOwner(1);
+
+        $this->expectException(DomainException::class);
+        (new TeamSessionService())->assertTeamSession($room['uuid'], $team['public_uuid']);
+    }
+
+    public function testNonOwnerTeacherCannotBypassCentralizedRoom(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Auth Bypass Foreign Test', [
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Punya Guru Lain')['team'];
+
+        $otherTeacherId = (new TeacherModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'name' => 'Guru Lain',
+            'email' => 'guru-lain-' . bin2hex(random_bytes(4)) . '@example.test',
+            'role' => 'teacher',
+        ], true);
+        $this->actingAsTeacherOwner($otherTeacherId);
+
+        $this->expectException(DomainException::class);
+        (new TeamSessionService())->assertTeamSession($room['uuid'], $team['public_uuid']);
+    }
+
+    private function actingAsTeacherOwner(int $teacherId): void
+    {
+        $users = model(UserModel::class);
+        $suffix = bin2hex(random_bytes(4));
+        $user = new User([
+            'username' => 'test-teacher-' . $teacherId . '-' . $suffix,
+            'email' => 'test-teacher-' . $teacherId . '-' . $suffix . '@example.test',
+            'active' => true,
+        ]);
+        $user->setPassword('TestPassword123!');
+        $users->save($user);
+        $user = $users->findById($users->getInsertID());
+        $user->addGroup('teacher');
+
+        (new TeacherModel())->update($teacherId, ['auth_user_id' => $user->id]);
+
+        $this->actingAs($user);
     }
 }
