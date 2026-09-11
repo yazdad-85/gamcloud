@@ -2456,7 +2456,8 @@ class GameEngine
     public function deleteRoom(string $roomUuid): void
     {
         $room = $this->roomByUuid($roomUuid);
-        if (in_array($room['status'], ['PLAYING', 'PAUSED'], true)) {
+        $isExpired = ($room['expires_at'] ?? null) !== null && strtotime((string) $room['expires_at']) < time();
+        if (! $isExpired && in_array($room['status'], ['PLAYING', 'PAUSED'], true)) {
             throw new DomainException('Room yang sedang berjalan atau dijeda tidak bisa dihapus. Selesaikan game lebih dulu.');
         }
 
@@ -3533,6 +3534,7 @@ class GameEngine
             'title' => $room['title'],
             'display_title' => GameRoomPresenter::displayTitle($room),
             'status' => $room['status'],
+            'is_expired' => ($room['expires_at'] ?? null) !== null && strtotime((string) $room['expires_at']) < time(),
             'state_version' => (int) $room['state_version'],
             'current_team_uuid' => $this->currentTeamUuid($room),
             'question_time_seconds' => (int) $room['question_time_seconds'],

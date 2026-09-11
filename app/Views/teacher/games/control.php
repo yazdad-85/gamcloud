@@ -15,8 +15,18 @@
         <button class="button danger" data-force-timeout type="button">Force Timeout</button>
         <button class="button" data-start-timer type="button" hidden>Mulai Waktu Jawab</button>
         <a class="button secondary" target="_blank" href="/game/<?= esc($room['uuid']) ?>/projector?t=<?= esc((string) ($room['projector_token'] ?? '')) ?>">Projector</a>
+        <?php if (! empty($room['is_expired'])): ?>
+            <form action="/teacher/games/<?= esc($room['uuid']) ?>/delete" method="post" onsubmit="return confirm('Room ini sudah kedaluwarsa dan tidak bisa dilanjutkan. Hapus paksa? Semua data tim, jawaban, dan event room ini akan hilang permanen.');">
+                <?= csrf_field() ?>
+                <button class="button danger" type="submit">Hapus Room (Kedaluwarsa)</button>
+            </form>
+        <?php endif ?>
     </div>
 </div>
+
+<?php if (! empty($room['is_expired'])): ?>
+    <div class="alert">Room sudah kedaluwarsa dan tidak bisa dilanjutkan. Hapus room ini untuk membuat room baru.</div>
+<?php endif ?>
 
 <div class="alert hidden" data-error></div>
 

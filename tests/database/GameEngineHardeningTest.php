@@ -1115,6 +1115,41 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $engine->deleteRoom($room['uuid']);
     }
 
+    public function testDeleteExpiredPlayingRoomIsAllowed(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Delete Expired Playing Test', [
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $engine->joinByPin($room['pin'], 'Tim Terjebak');
+        $engine->start($room['uuid']);
+        $roomId = $this->roomId($room['uuid']);
+        (new GameRoomModel())->update($roomId, [
+            'expires_at' => date('Y-m-d H:i:s', time() - 5),
+        ]);
+
+        $engine->deleteRoom($room['uuid']);
+
+        $this->assertNull((new GameRoomModel())->where('public_uuid', $room['uuid'])->first());
+    }
+
+    public function testSnapshotFlagsExpiredRoomAsIsExpired(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Snapshot Expiry Flag Test', [
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $roomId = $this->roomId($room['uuid']);
+
+        $this->assertFalse($engine->snapshot($room['uuid'])['room']['is_expired']);
+
+        (new GameRoomModel())->update($roomId, [
+            'expires_at' => date('Y-m-d H:i:s', time() - 5),
+        ]);
+
+        $this->assertTrue($engine->snapshot($room['uuid'])['room']['is_expired']);
+    }
+
     public function testCreateRoomPlacesRequestedNumberOfMysteryTiles(): void
     {
         $engine = new GameEngine();
