@@ -192,6 +192,43 @@ class RoomsController extends BaseController
         });
     }
 
+    public function raceQuestionAnswer(string $roomUuid)
+    {
+        $payload = $this->request->getJSON(true) ?: $this->request->getPost();
+        $teamUuid = (string) ($payload['team_uuid'] ?? $this->request->getGet('team'));
+        $optionId = (int) ($payload['option_id'] ?? 0);
+
+        return $this->respond(function () use ($roomUuid, $teamUuid, $optionId, $payload): array {
+            (new TeamSessionService())->assertTeamSession($roomUuid, $teamUuid);
+
+            return (new GameEngine())->raceQuestionAnswer(
+                $roomUuid,
+                $teamUuid,
+                $optionId,
+                $this->request->getHeaderLine('Idempotency-Key') ?: ($payload['idempotency_key'] ?? null)
+            );
+        });
+    }
+
+    public function resolveRaceQuestion(string $roomUuid)
+    {
+        $payload = $this->request->getJSON(true) ?: $this->request->getPost();
+        $force = filter_var($payload['force'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        return $this->respond(function () use ($roomUuid, $force, $payload): array {
+            (new TenantContext())->assertRoomOwner($roomUuid);
+            if (! $force) {
+                throw new DomainException('Force resolve wajib menyertakan { "force": true }.');
+            }
+
+            return (new GameEngine())->resolveRaceQuestion(
+                $roomUuid,
+                true,
+                $this->request->getHeaderLine('Idempotency-Key') ?: ($payload['idempotency_key'] ?? null)
+            );
+        });
+    }
+
     private function respond(callable $callback)
     {
         try {

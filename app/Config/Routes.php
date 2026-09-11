@@ -83,4 +83,6 @@ $routes->group('api/v1', static function ($routes): void {
     $routes->post('rooms/(:segment)/mystery/choose', 'Api\V1\RoomsController::chooseMystery/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
     $routes->post('rooms/(:segment)/mystery/answer', 'Api\V1\RoomsController::answerMystery/$1', ['filter' => 'rateLimit:45,60,api-mutation']);
     $routes->post('rooms/(:segment)/board-challenge/answer', 'Api\V1\RoomsController::answerBoardChallenge/$1', ['filter' => 'rateLimit:45,60,api-mutation']);
+    $routes->post('rooms/(:segment)/race-question/answer', 'Api\V1\RoomsController::raceQuestionAnswer/$1', ['filter' => 'rateLimit:45,60,api-mutation']);
+    $routes->post('rooms/(:segment)/race-question/resolve', 'Api\V1\RoomsController::resolveRaceQuestion/$1', ['filter' => 'rateLimit:30,60,api-mutation']);
 });
