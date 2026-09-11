@@ -43,6 +43,53 @@
         <div class="answer-list" data-options></div>
     </div>
 
+    <div class="panel hidden" data-race-panel>
+        <div class="race-progress">
+            <span data-race-round-progress>Ronde -/-</span>
+            <span data-race-question-progress>Soal -/-</span>
+            <span class="team-countdown" data-race-countdown>-</span>
+        </div>
+
+        <div class="hidden" data-race-question-box>
+            <h2>Pertanyaan</h2>
+            <p data-race-question-stem></p>
+            <p class="question-meta" data-race-question-meta></p>
+            <div data-race-question-media></div>
+            <div class="answer-list" data-race-options></div>
+        </div>
+
+        <div class="race-state hidden" data-race-waiting>
+            <p>Jawaban terkirim, menunggu soal ditutup...</p>
+        </div>
+
+        <div class="race-state hidden" data-race-resolving>
+            <p>Menghitung hasil...</p>
+        </div>
+
+        <div class="race-state hidden" data-race-result>
+            <h2 data-race-result-outcome></h2>
+            <p data-race-result-fastest class="hidden">Tercepat! Bonus gerak +2.</p>
+            <p data-race-result-movement></p>
+            <p data-race-result-tile class="hidden"></p>
+            <p data-race-result-score></p>
+        </div>
+
+        <div class="race-state hidden" data-race-checkpoint>
+            <h2>Checkpoint Ronde</h2>
+            <p data-race-checkpoint-winners></p>
+            <p data-race-checkpoint-prize></p>
+        </div>
+
+        <div class="race-state hidden" data-race-finished>
+            <h2 data-race-finish-title>Race Selesai!</h2>
+            <p data-race-finish-summary></p>
+        </div>
+
+        <div class="race-state hidden" data-race-waiting-room>
+            <p data-race-waiting-room-text>Menunggu permainan dimulai.</p>
+        </div>
+    </div>
+
     <div class="panel hidden" data-mystery-choice>
         <h2>Kotak Misteri</h2>
         <p class="muted">Pilih niatmu sebelum menjawab soal HARD.</p>

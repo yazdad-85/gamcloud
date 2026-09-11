@@ -1351,11 +1351,17 @@
         const teamAvatarBadge = document.querySelector('[data-team-avatar]');
         const teamAvatarInitials = document.querySelector('[data-team-avatar-initials]');
         const moveFeedback = document.querySelector('[data-move-feedback]');
+        const racePanel = document.querySelector('[data-race-panel]');
+        const raceQuestionBox = document.querySelector('[data-race-question-box]');
+        const raceOptionList = document.querySelector('[data-race-options]');
         let isRolling = false;
         let isAnswering = false;
         let isChoosingMystery = false;
+        let isRaceAnswering = false;
         let pendingConfirmOptionId = null;
         let pendingConfirmQuestionId = null;
+        let pendingRaceConfirmOptionId = null;
+        let pendingRaceConfirmQuestionUuid = null;
         let moveFeedbackTimer = null;
         const seenTeamEvents = new Set((config.snapshot.events || []).map((event) => event.event_id));
 
@@ -1401,6 +1407,12 @@
         function drawController() {
             const snapshot = runtime.getSnapshot();
             checkMoveFeedback(snapshot);
+
+            if (snapshot.mode_state && snapshot.mode_state.round_model === 'multi_question_round') {
+                drawRaceController(snapshot);
+                return;
+            }
+
             const turn = snapshot.current_turn;
             const activeQuestionId = turn && turn.question ? turn.question.id : null;
             if (activeQuestionId !== pendingConfirmQuestionId) {
@@ -1643,6 +1655,269 @@
             return 'Sekarang giliran ' + state.currentTeamName + '.';
         }
 
+        function raceMovementFor(movement, teamUuid) {
+            if (!movement) {
+                return null;
+            }
+
+            return Object.values(movement).find((entry) => entry.team_uuid === teamUuid) || null;
+        }
+
+        function raceTileLabel(special) {
+            if (special === 'BOOST') {
+                return 'Kena Boost — melaju tambahan!';
+            }
+            if (special === 'OIL_SPILL') {
+                return 'Kena Oil Spill — bonus tercepat terkunci di soal berikutnya.';
+            }
+
+            return '';
+        }
+
+        function raceOutcomeLabel(outcome) {
+            if (outcome === 'CORRECT') {
+                return 'Jawaban benar!';
+            }
+            if (outcome === 'TIMEOUT') {
+                return 'Waktu habis, tim tidak sempat menjawab.';
+            }
+
+            return 'Jawaban belum tepat.';
+        }
+
+        function raceLastFinishedEvent(snapshot) {
+            const events = snapshot.events || [];
+            for (let i = events.length - 1; i >= 0; i--) {
+                if (events[i].event === 'game.finished') {
+                    return events[i].payload || {};
+                }
+            }
+
+            return null;
+        }
+
+        function hideRaceStates() {
+            ['[data-race-question-box]', '[data-race-waiting]', '[data-race-resolving]', '[data-race-result]', '[data-race-checkpoint]', '[data-race-finished]', '[data-race-waiting-room]'].forEach((selector) => {
+                const el = document.querySelector(selector);
+                if (el) {
+                    el.classList.add('hidden');
+                }
+            });
+        }
+
+        function drawRaceController(snapshot) {
+            if (dicePanel) {
+                dicePanel.classList.add('hidden');
+            }
+            if (rollButton) {
+                rollButton.classList.add('hidden');
+            }
+            if (questionBox) {
+                questionBox.classList.add('hidden');
+            }
+            if (mysteryChoiceBox) {
+                mysteryChoiceBox.classList.add('hidden');
+            }
+            if (racePanel) {
+                racePanel.classList.remove('hidden');
+            }
+
+            const teamUuid = activeTeamUuid();
+            const team = (snapshot.teams || []).find((item) => item.uuid === teamUuid);
+            document.querySelectorAll('[data-team-name]').forEach((el) => el.textContent = team ? team.name : 'Tim');
+            document.querySelectorAll('[data-team-score]').forEach((el) => el.textContent = team ? team.score : '0');
+            document.querySelectorAll('[data-team-position]').forEach((el) => el.textContent = team ? team.position : '1');
+
+            if (turnInfo) {
+                turnInfo.textContent = 'Balapan Quiz Race';
+            }
+
+            hideRaceStates();
+
+            const waitingRoomBox = document.querySelector('[data-race-waiting-room]');
+            const waitingRoomText = document.querySelector('[data-race-waiting-room-text]');
+
+            if (snapshot.room.status === 'LOBBY') {
+                if (waitingRoomBox && waitingRoomText) {
+                    waitingRoomText.textContent = 'Menunggu guru memulai permainan.';
+                    waitingRoomBox.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (snapshot.room.status === 'PAUSED') {
+                if (waitingRoomBox && waitingRoomText) {
+                    waitingRoomText.textContent = 'Game dijeda guru.';
+                    waitingRoomBox.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (snapshot.room.status === 'FINISHED') {
+                const finishBox = document.querySelector('[data-race-finished]');
+                const finishSummary = document.querySelector('[data-race-finish-summary]');
+                const finishTitle = document.querySelector('[data-race-finish-title]');
+                const payload = raceLastFinishedEvent(snapshot) || {};
+                const winnerUuids = payload.winner_team_uuids || (payload.winner_team_uuid ? [payload.winner_team_uuid] : []);
+                const winnerNames = winnerUuids.map((uuid) => teamNameByUuid(uuid, snapshot)).filter(Boolean);
+                const iAmWinner = winnerUuids.includes(teamUuid);
+                if (finishTitle) {
+                    finishTitle.textContent = iAmWinner ? 'Timmu Menang!' : 'Race Selesai!';
+                }
+                if (finishSummary) {
+                    finishSummary.textContent = winnerNames.length > 0
+                        ? 'Juara: ' + winnerNames.join(', ') + (payload.finish_reason === 'QUESTION_LIMIT' ? ' (berdasarkan posisi & skor)' : '')
+                        : 'Permainan telah berakhir.';
+                }
+                if (finishBox) {
+                    finishBox.classList.remove('hidden');
+                }
+                return;
+            }
+
+            const round = snapshot.current_round;
+            const raceRoundProgress = document.querySelector('[data-race-round-progress]');
+            const raceQuestionProgress = document.querySelector('[data-race-question-progress]');
+            const raceCountdown = document.querySelector('[data-race-countdown]');
+
+            if (!round) {
+                const lastRound = snapshot.last_completed_round;
+                if (lastRound && lastRound.state === 'ROUND_COMPLETED') {
+                    if (raceRoundProgress) {
+                        raceRoundProgress.textContent = 'Ronde ' + lastRound.round_number;
+                    }
+                    const checkpointBox = document.querySelector('[data-race-checkpoint]');
+                    const checkpointWinners = document.querySelector('[data-race-checkpoint-winners]');
+                    const checkpointPrize = document.querySelector('[data-race-checkpoint-prize]');
+                    const winnerNames = (lastRound.round_winner_team_uuids || [])
+                        .map((uuid) => teamNameByUuid(uuid, snapshot))
+                        .filter(Boolean);
+                    if (checkpointWinners) {
+                        checkpointWinners.textContent = winnerNames.length > 0
+                            ? 'Juara ronde: ' + winnerNames.join(', ')
+                            : 'Ronde selesai.';
+                    }
+                    if (checkpointPrize) {
+                        checkpointPrize.textContent = winnerNames.length > 0 ? 'Bonus skor untuk juara ronde.' : '';
+                    }
+                    if (checkpointBox) {
+                        checkpointBox.classList.remove('hidden');
+                    }
+                } else if (waitingRoomBox && waitingRoomText) {
+                    waitingRoomText.textContent = 'Menyiapkan ronde berikutnya...';
+                    waitingRoomBox.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (raceRoundProgress) {
+                raceRoundProgress.textContent = 'Ronde ' + round.round_number;
+            }
+
+            const question = round.current_question;
+            if (!question) {
+                if (waitingRoomBox && waitingRoomText) {
+                    waitingRoomText.textContent = 'Menyiapkan soal berikutnya...';
+                    waitingRoomBox.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (raceQuestionProgress) {
+                raceQuestionProgress.textContent = 'Soal ' + question.question_number + '/' + round.question_target_count;
+            }
+
+            if (question.public_uuid !== pendingRaceConfirmQuestionUuid && question.uuid !== pendingRaceConfirmQuestionUuid) {
+                pendingRaceConfirmQuestionUuid = question.uuid;
+                pendingRaceConfirmOptionId = null;
+            }
+
+            const myAnswer = (question.answers || []).find((entry) => entry.team_uuid === teamUuid);
+            const alreadyAnswered = Boolean(myAnswer && myAnswer.answered);
+
+            if (question.state === 'QUESTION_ACTIVE') {
+                if (raceCountdown) {
+                    const remaining = Math.max(0, Math.ceil((Number(question.deadline_epoch_ms || 0) - Date.now()) / 1000));
+                    raceCountdown.textContent = remaining > 0 ? remaining + ' detik' : 'Waktu habis';
+                }
+                if (alreadyAnswered) {
+                    const waitingBox = document.querySelector('[data-race-waiting]');
+                    if (waitingBox) {
+                        waitingBox.classList.remove('hidden');
+                    }
+                    return;
+                }
+
+                if (raceQuestionBox && raceOptionList && question.question) {
+                    raceQuestionBox.classList.remove('hidden');
+                    const stem = document.querySelector('[data-race-question-stem]');
+                    if (stem) {
+                        stem.textContent = question.question.stem;
+                    }
+                    const meta = document.querySelector('[data-race-question-meta]');
+                    if (meta) {
+                        meta.textContent = questionTypeLabel(question.question.type) + ' / ' + String(question.question.difficulty || 'MEDIUM');
+                    }
+                    const media = document.querySelector('[data-race-question-media]');
+                    if (media) {
+                        media.innerHTML = mediaHtml(question.question.media, 'question-player-media');
+                    }
+                    raceOptionList.innerHTML = question.question.options.map((option) => (
+                        '<button class="answer-button' + (String(option.id) === String(pendingRaceConfirmOptionId) ? ' is-selected' : '') + '" data-option-id="' + option.id + '"' + (isRaceAnswering ? ' disabled' : '') + '>' +
+                        '<strong>' + escapeHtml(option.label) + '</strong>' +
+                        '<span>' + escapeHtml(option.body) + '</span>' +
+                        mediaHtml(option.media, 'option-player-media') +
+                        '</button>'
+                    )).join('');
+                }
+                return;
+            }
+
+            if (question.state === 'QUESTION_RESOLVING') {
+                const resolvingBox = document.querySelector('[data-race-resolving]');
+                if (resolvingBox) {
+                    resolvingBox.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (question.state === 'QUESTION_RESOLVED') {
+                const movement = raceMovementFor(question.movement, teamUuid);
+                const resultBox = document.querySelector('[data-race-result]');
+                const outcomeEl = document.querySelector('[data-race-result-outcome]');
+                const fastestEl = document.querySelector('[data-race-result-fastest]');
+                const movementEl = document.querySelector('[data-race-result-movement]');
+                const tileEl = document.querySelector('[data-race-result-tile]');
+                const scoreEl = document.querySelector('[data-race-result-score]');
+                const isFastest = (question.fastest_team_uuids || []).includes(teamUuid);
+
+                if (outcomeEl && movement) {
+                    outcomeEl.textContent = raceOutcomeLabel(movement.outcome);
+                }
+                if (fastestEl) {
+                    fastestEl.classList.toggle('hidden', !isFastest);
+                }
+                if (movementEl && movement) {
+                    movementEl.textContent = 'Posisi ' + movement.from + ' → ' + movement.to + ' (kotak ' + (team ? team.position : movement.to) + ')';
+                }
+                if (tileEl) {
+                    const tileText = movement ? raceTileLabel(movement.special) : '';
+                    tileEl.textContent = tileText;
+                    tileEl.classList.toggle('hidden', tileText === '');
+                }
+                if (scoreEl && movement) {
+                    const breakdown = movement.score_breakdown || {};
+                    scoreEl.textContent = 'Skor +' + Number(movement.score_delta || 0)
+                        + ' (jawaban ' + Number(breakdown.answer || 0)
+                        + ', cepat ' + Number(breakdown.time_bonus || 0)
+                        + ', streak ' + Number(breakdown.streak_bonus || 0) + ')';
+                }
+                if (resultBox) {
+                    resultBox.classList.remove('hidden');
+                }
+            }
+        }
+
         const originalRefresh = runtime.refresh;
         runtime.refresh = function () {
             return originalRefresh().then((snapshot) => {
@@ -1733,6 +2008,41 @@
                     .finally(() => {
                         isAnswering = false;
                         pendingConfirmOptionId = null;
+                        drawController();
+                    });
+            });
+        }
+
+        if (raceOptionList) {
+            raceOptionList.addEventListener('click', function (event) {
+                const button = event.target.closest('[data-option-id]');
+                if (!button || button.disabled || isRaceAnswering) {
+                    return;
+                }
+                if (config.confirmBeforeAnswer && String(button.dataset.optionId) !== String(pendingRaceConfirmOptionId)) {
+                    pendingRaceConfirmOptionId = button.dataset.optionId;
+                    drawController();
+                    return;
+                }
+                const snapshot = runtime.getSnapshot();
+                const question = snapshot.current_round && snapshot.current_round.current_question;
+                if (!question) {
+                    return;
+                }
+                isRaceAnswering = true;
+                drawController();
+                runtime.setError('');
+                const idempotencyKey = 'race-answer:' + config.roomUuid + ':' + question.uuid + ':' + activeTeamUuid();
+                jsonFetch('/api/v1/rooms/' + config.roomUuid + '/race-question/answer', {
+                    method: 'POST',
+                    headers: {'Idempotency-Key': idempotencyKey},
+                    body: JSON.stringify({team_uuid: activeTeamUuid(), option_id: button.dataset.optionId}),
+                })
+                    .then(runtime.refresh)
+                    .catch((error) => runtime.setError(error.message))
+                    .finally(() => {
+                        isRaceAnswering = false;
+                        pendingRaceConfirmOptionId = null;
                         drawController();
                     });
             });
