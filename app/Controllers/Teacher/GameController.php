@@ -114,6 +114,16 @@ class GameController extends BaseController
             $lapCount = 5;
         }
 
+        $raceRoundQuestionCounts = null;
+        if ($gameMode === 'QUIZ_RACE' && $participationMode === 'TEAM_DEVICE') {
+            $rawAllocation = $this->request->getPost('race_round_question_counts');
+            $rawAllocation = is_array($rawAllocation) ? $rawAllocation : [];
+            $raceRoundQuestionCounts = array_values(array_map(
+                static fn ($value): int => (int) $value,
+                array_filter($rawAllocation, static fn ($value): bool => is_scalar($value) && preg_match('/^[0-9]+$/', (string) $value) === 1)
+            ));
+        }
+
         $engine = new GameEngine();
         $questionBankSummary = $engine->questionBankSummary($teacherId);
         if ((int) $questionBankSummary['total'] < 1) {
@@ -134,6 +144,7 @@ class GameController extends BaseController
                 'participation_mode' => $participationMode,
                 'track_length' => $trackLength,
                 'lap_count' => $lapCount,
+                'race_round_question_counts' => $raceRoundQuestionCounts,
                 'board_template_id' => $boardTemplateId,
                 'turn_order_mode' => $turnOrderMode,
                 'finish_rule' => $finishRule,

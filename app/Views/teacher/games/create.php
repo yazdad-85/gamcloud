@@ -27,6 +27,10 @@
     $initialQuestionSummary['zone_strategy_ready'] = $initialQuestionSummary['difficulty']['EASY'] > 0
         && $initialQuestionSummary['difficulty']['MEDIUM'] > 0
         && $initialQuestionSummary['difficulty']['HARD'] > 0;
+    $oldRoundAllocation = old('race_round_question_counts');
+    $initialRoundAllocation = is_array($oldRoundAllocation) && $oldRoundAllocation !== []
+        ? array_map('intval', $oldRoundAllocation)
+        : [15, 15, 20];
 ?>
 <div class="topbar">
     <div>
@@ -279,10 +283,28 @@
             <input type="number" id="track_length" name="track_length" min="6" max="60" step="1" value="<?= esc((string) old('track_length', 24)) ?>" required>
             <p class="field-help">Jumlah kotak dari garis start ke garis finish.</p>
         </div>
-        <div class="field hidden" data-race-only>
+        <div class="field hidden" data-race-team-device-only>
+            <label>Alokasi Soal per Ronde</label>
+            <div class="round-allocation-rows" data-round-allocation-rows>
+                <?php foreach ($initialRoundAllocation as $index => $count): ?>
+                    <div class="round-allocation-row" data-round-row>
+                        <span data-round-row-label>Ronde <?= esc((string) ($index + 1)) ?></span>
+                        <input type="number" name="race_round_question_counts[]" min="1" max="100" step="1" value="<?= esc((string) $count) ?>" required>
+                    </div>
+                <?php endforeach ?>
+            </div>
+            <div class="control-actions">
+                <button type="button" class="button secondary" data-round-add>+ Tambah Ronde</button>
+                <button type="button" class="button secondary" data-round-remove>- Hapus Ronde</button>
+            </div>
+            <p class="field-help">Total soal: <strong data-round-allocation-total><?= esc((string) array_sum($initialRoundAllocation)) ?></strong>. Minimal 1, maksimal 5 ronde; tiap ronde minimal 1 soal, total maksimal 100 soal. Jumlah lap mengikuti jumlah ronde secara otomatis.</p>
+        </div>
+        <div class="field hidden" data-race-centralized-only>
             <label for="lap_count">Jumlah Lap</label>
             <input type="number" id="lap_count" name="lap_count" min="1" max="10" step="1" value="<?= esc((string) old('lap_count', 5)) ?>" required>
             <p class="field-help">Lintasan dibagi rata jadi beberapa lap; melewati batas lap memberi bonus 1 langkah instan.</p>
+        </div>
+        <div class="field hidden" data-race-only>
             <p class="field-help" data-race-bank-note></p>
         </div>
         <div class="field">
@@ -416,18 +438,62 @@
 <script>
 (function () {
     const raceOnlyFields = document.querySelectorAll('[data-race-only]');
+    const raceCentralizedOnlyFields = document.querySelectorAll('[data-race-centralized-only]');
+    const raceTeamDeviceOnlyFields = document.querySelectorAll('[data-race-team-device-only]');
     const snakesOnlyFields = document.querySelectorAll('[data-snakes-only]');
     const nearFinishCheckbox = document.querySelector('input[name="near_finish_bonus"]');
-    const teamDeviceRadio = document.querySelector('input[name="participation_mode"][value="TEAM_DEVICE"]');
-    const centralizedRadio = document.querySelector('input[name="participation_mode"][value="TEACHER_CENTRALIZED"]');
     const trackLengthInput = document.querySelector('#track_length');
     const raceBankNote = document.querySelector('[data-race-bank-note]');
     const modeQuestionHelp = document.querySelector('[data-mode-question-help]');
-    const participationHelp = document.querySelector('[data-participation-help]');
+    const roundRowsContainer = document.querySelector('[data-round-allocation-rows]');
+    const roundAddButton = document.querySelector('[data-round-add]');
+    const roundRemoveButton = document.querySelector('[data-round-remove]');
+    const roundTotalEl = document.querySelector('[data-round-allocation-total]');
+    const ROUND_DEFAULT_VALUE = 15;
+    const ROUND_MIN_COUNT = 1;
+    const ROUND_MAX_COUNT = 5;
 
     function currentGameMode() {
         const checked = document.querySelector('input[name="game_mode"]:checked');
         return checked ? checked.value : 'SNAKES_LADDERS';
+    }
+
+    function currentParticipationMode() {
+        const checked = document.querySelector('input[name="participation_mode"]:checked');
+        return checked ? checked.value : 'TEAM_DEVICE';
+    }
+
+    function roundRowInputs() {
+        return roundRowsContainer
+            ? Array.from(roundRowsContainer.querySelectorAll('input[name="race_round_question_counts[]"]'))
+            : [];
+    }
+
+    function roundAllocationTotal() {
+        return roundRowInputs().reduce((sum, input) => sum + (parseInt(input.value, 10) || 0), 0);
+    }
+
+    function renumberRoundRows() {
+        roundRowInputs().forEach((input, index) => {
+            const label = input.closest('[data-round-row]').querySelector('[data-round-row-label]');
+            if (label) {
+                label.textContent = 'Ronde ' + (index + 1);
+            }
+        });
+    }
+
+    function updateRoundAllocationControls() {
+        const inputs = roundRowInputs();
+        if (roundTotalEl) {
+            roundTotalEl.textContent = roundAllocationTotal();
+        }
+        if (roundAddButton) {
+            roundAddButton.disabled = inputs.length >= ROUND_MAX_COUNT;
+        }
+        if (roundRemoveButton) {
+            roundRemoveButton.disabled = inputs.length <= ROUND_MIN_COUNT;
+        }
+        updateRaceBankNote();
     }
 
     function updateRaceBankNote() {
@@ -438,32 +504,30 @@
             raceBankNote.textContent = '';
             return;
         }
-        const trackLength = Number(trackLengthInput ? trackLengthInput.value : 0) || 0;
         const totalEl = document.querySelector('[data-bank-total]');
         const totalAvailable = Number(totalEl ? totalEl.textContent : 0) || 0;
-        const maxTeams = 6;
-        const estimatedNeeded = maxTeams * Math.ceil(trackLength / 2);
+        const isTeamDevice = currentParticipationMode() === 'TEAM_DEVICE';
+        const estimatedNeeded = isTeamDevice
+            ? roundAllocationTotal()
+            : 6 * Math.ceil((Number(trackLengthInput ? trackLengthInput.value : 0) || 0) / 2);
         raceBankNote.textContent = totalAvailable < estimatedNeeded
-            ? 'Bank soal topik ini diperkirakan kurang untuk lintasan sepanjang ini (perkiraan butuh ~' + estimatedNeeded + ' soal untuk ' + maxTeams + ' tim) — soal kemungkinan akan berulang sebelum tim mencapai finish.'
+            ? 'Bank soal topik ini diperkirakan kurang (perkiraan butuh ~' + estimatedNeeded + ' soal) — soal kemungkinan akan berulang.'
             : '';
     }
 
     let previousNearFinishChecked = null;
-    let previousParticipationMode = null;
 
     function applyModeVisibility() {
         const isRace = currentGameMode() === 'QUIZ_RACE';
+        const isTeamDevice = currentParticipationMode() === 'TEAM_DEVICE';
         raceOnlyFields.forEach((field) => field.classList.toggle('hidden', !isRace));
+        raceCentralizedOnlyFields.forEach((field) => field.classList.toggle('hidden', !(isRace && !isTeamDevice)));
+        raceTeamDeviceOnlyFields.forEach((field) => field.classList.toggle('hidden', !(isRace && isTeamDevice)));
         snakesOnlyFields.forEach((field) => field.classList.toggle('hidden', isRace));
         if (modeQuestionHelp) {
             modeQuestionHelp.textContent = isRace
                 ? 'Quiz Race tidak memakai dadu. Tim memilih EASY, MEDIUM, atau HARD; pilihan itu menentukan jarak maju jika jawaban benar. Boost/Oil Spill berlaku setelah posisi baru dihitung.'
                 : 'Soal muncul di setiap giliran lempar dadu, disesuaikan dengan kotak yang dituju dadu. Kotak BONUS/TRAP/SAFE/MYSTERY adalah efek tambahan yang berlaku setelah jawaban benar, bukan syarat munculnya soal.';
-        }
-        if (participationHelp) {
-            participationHelp.textContent = isRace
-                ? 'Quiz Race saat ini memakai mode terpusat: guru memilih tingkat soal dan jawaban dari halaman Control Game.'
-                : 'Tanpa Device: tidak ada join PIN, guru mengoperasikan dadu & jawaban dari halaman Control Game (1 laptop + projector). Cocok untuk sekolah yang melarang HP siswa.';
         }
 
         if (nearFinishCheckbox) {
@@ -482,28 +546,58 @@
             }
         }
 
-        if (teamDeviceRadio && centralizedRadio) {
-            if (isRace) {
-                if (!teamDeviceRadio.disabled && teamDeviceRadio.checked) {
-                    previousParticipationMode = 'TEAM_DEVICE';
-                    centralizedRadio.checked = true;
-                }
-                teamDeviceRadio.disabled = true;
-            } else {
-                teamDeviceRadio.disabled = false;
-                if (previousParticipationMode === 'TEAM_DEVICE') {
-                    teamDeviceRadio.checked = true;
-                    previousParticipationMode = null;
-                }
-            }
-        }
-
-        updateRaceBankNote();
+        updateRoundAllocationControls();
     }
 
-    document.querySelectorAll('input[name="game_mode"]').forEach((radio) => radio.addEventListener('change', applyModeVisibility));
+    function createRoundRow(value) {
+        const row = document.createElement('div');
+        row.className = 'round-allocation-row';
+        row.setAttribute('data-round-row', '');
+
+        const label = document.createElement('span');
+        label.setAttribute('data-round-row-label', '');
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.name = 'race_round_question_counts[]';
+        input.min = '1';
+        input.max = '100';
+        input.step = '1';
+        input.required = true;
+        input.value = String(value);
+
+        row.append(label, input);
+
+        return row;
+    }
+
+    document.querySelectorAll('input[name="game_mode"], input[name="participation_mode"]').forEach((radio) => radio.addEventListener('change', applyModeVisibility));
     if (trackLengthInput) {
         trackLengthInput.addEventListener('input', updateRaceBankNote);
+    }
+    if (roundRowsContainer) {
+        roundRowsContainer.addEventListener('input', updateRoundAllocationControls);
+    }
+    if (roundAddButton) {
+        roundAddButton.addEventListener('click', function () {
+            if (roundRowInputs().length >= ROUND_MAX_COUNT) {
+                return;
+            }
+            roundRowsContainer.appendChild(createRoundRow(ROUND_DEFAULT_VALUE));
+            renumberRoundRows();
+            updateRoundAllocationControls();
+        });
+    }
+    if (roundRemoveButton) {
+        roundRemoveButton.addEventListener('click', function () {
+            const inputs = roundRowInputs();
+            if (inputs.length <= ROUND_MIN_COUNT) {
+                return;
+            }
+            inputs[inputs.length - 1].closest('[data-round-row]').remove();
+            renumberRoundRows();
+            updateRoundAllocationControls();
+        });
     }
     // updateRaceBankNote() reads the topic checkboxes' checked state, but relies on the
     // existing topic-selection script's 'change' listener (on optionsContainer, an ancestor
