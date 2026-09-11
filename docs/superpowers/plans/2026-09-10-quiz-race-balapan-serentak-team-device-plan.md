@@ -788,13 +788,13 @@ git commit -m "feat: integrate multi-round Quiz Race lifecycle"
 
 ## Task 14: Concurrency and End-to-End Regression
 
-- [ ] **Step 1: Full suite**
+- [x] **Step 1: Full suite**
 
 ```bash
 ./vendor/bin/phpunit
 ```
 
-- [ ] **Step 2: Concurrency smoke**
+- [x] **Step 2: Concurrency smoke**
 
 On one room, submit the last answers while polling and pressing `Tutup Soal`. Assert:
 
@@ -806,7 +806,7 @@ On one room, submit the last answers while polling and pressing `Tutup Soal`. As
 
 Repeat around question reveal and round checkpoint reveal boundaries.
 
-- [ ] **Step 3: Manual default-allocation smoke**
+- [x] **Step 3: Manual default-allocation smoke**
 
 - Create Team Device room with 15/15/20.
 - Join at least two teams in separate sessions.
@@ -817,17 +817,17 @@ Repeat around question reveal and round checkpoint reveal boundaries.
 - Arrange a finish before Ronde 2 quota ends; verify immediate `FINISHED`, `ROUND_INTERRUPTED`, no round prize, and no next question.
 - Verify report contents and delete a disposable room.
 
-- [ ] **Step 4: Question-limit fallback smoke**
+- [x] **Step 4: Question-limit fallback smoke**
 
 Use a long track so nobody finishes after all allocated questions. Verify `QUESTION_LIMIT` ranking and finish event.
 
-- [ ] **Step 5: Regression smoke**
+- [x] **Step 5: Regression smoke**
 
 - Centralized Quiz Race: tier selection, timer, movement, finish.
 - Ular Tangga Team Device: PIN join, dice, answer, special tiles, finish.
 - Pause/resume both legacy flows.
 
-- [ ] **Step 6: Commit only if fixes were required**
+- [x] **Step 6: Commit only if fixes were required**
 
 ```bash
 git add <changed-files>
@@ -835,3 +835,10 @@ git commit -m "fix: stabilize multi-round Quiz Race flow"
 ```
 
 Do not create an empty checkpoint commit.
+
+**Hasil verifikasi 2026-09-11:** suite penuh lulus 243 tes / 916 assertion. Smoke
+concurrency lulus 7 tes / 45 assertion dan API Team Device lulus 8 tes / 29
+assertion. Harness sementara untuk alokasi default 15/15/20, checkpoint dan hadiah
+Ronde 1, finish pada Ronde 2, laporan, cleanup, fallback `QUESTION_LIMIT`, serta
+regresi Quiz Race terpusat dan Ular Tangga Team Device lulus 4 tes / 81 assertion.
+Tidak ditemukan perbaikan kode yang diperlukan; harness sementara tidak disimpan.
