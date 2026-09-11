@@ -737,6 +737,10 @@
         const rosterError = document.querySelector('[data-roster-error]');
         const gameplayPanel = document.querySelector('[data-gameplay-panel]');
 
+        function isRaceTeamDevice(snapshot) {
+            return Boolean(snapshot.mode_state && snapshot.mode_state.round_model === 'multi_question_round');
+        }
+
         function drawTeacherControl() {
             const snapshot = runtime.getSnapshot();
             const turn = snapshot.current_turn;
@@ -745,6 +749,8 @@
             const isPaused = snapshot.room.status === 'PAUSED';
             const hasTurn = Boolean(turn);
             const hasActiveQuestion = isPlaying && turn && turn.state === 'QUESTION_ACTIVE';
+            const isRace = isRaceTeamDevice(snapshot);
+            const raceQuestion = isRace && snapshot.current_round ? snapshot.current_round.current_question : null;
 
             if (startButton) {
                 startButton.disabled = !canStart;
@@ -757,16 +763,24 @@
                 resumeButton.disabled = !isPaused;
             }
             if (skipTurnButton) {
-                skipTurnButton.disabled = !isPlaying || !hasTurn;
+                skipTurnButton.hidden = isRace;
+                skipTurnButton.disabled = isRace || !isPlaying || !hasTurn;
             }
             if (forceTimeoutButton) {
-                forceTimeoutButton.disabled = !hasActiveQuestion;
+                if (isRace) {
+                    forceTimeoutButton.textContent = 'Tutup Soal';
+                    forceTimeoutButton.disabled = !isPlaying || !raceQuestion || raceQuestion.state !== 'QUESTION_ACTIVE';
+                } else {
+                    forceTimeoutButton.textContent = 'Force Timeout';
+                    forceTimeoutButton.disabled = !hasActiveQuestion;
+                }
             }
             if (startTimerButton) {
                 const turnPending = turn && (turn.state === 'QUESTION_PENDING_START' || turn.state === 'MYSTERY_QUESTION_PENDING_START');
-                startTimerButton.hidden = !turnPending;
-                startTimerButton.disabled = !turnPending;
+                startTimerButton.hidden = isRace || !turnPending;
+                startTimerButton.disabled = isRace || !turnPending;
             }
+            drawRaceStatusPanel(snapshot, isRace, raceQuestion);
             if (rosterPanel) {
                 const isCentralized = snapshot.room.participation_mode === 'TEACHER_CENTRALIZED';
                 rosterPanel.classList.toggle('hidden', !isCentralized || snapshot.room.status !== 'LOBBY');
@@ -780,6 +794,55 @@
             if (gameplayPanel) {
                 const isCentralized = snapshot.room.participation_mode === 'TEACHER_CENTRALIZED';
                 gameplayPanel.classList.toggle('hidden', !isCentralized || snapshot.room.status !== 'PLAYING');
+            }
+        }
+
+        function drawRaceStatusPanel(snapshot, isRace, raceQuestion) {
+            const panel = document.querySelector('[data-race-status-panel]');
+            if (!panel) {
+                return;
+            }
+            panel.classList.toggle('hidden', !isRace);
+            if (!isRace) {
+                return;
+            }
+
+            const round = snapshot.current_round;
+            const roundEl = document.querySelector('[data-race-status-round]');
+            const questionEl = document.querySelector('[data-race-status-question]');
+            const difficultyEl = document.querySelector('[data-race-status-difficulty]');
+            const deadlineEl = document.querySelector('[data-race-status-deadline]');
+            const answeredEl = document.querySelector('[data-race-status-answered]');
+            const leaderEl = document.querySelector('[data-race-status-leader]');
+
+            if (roundEl) {
+                roundEl.textContent = round ? String(round.round_number) : '-';
+            }
+            if (questionEl) {
+                questionEl.textContent = raceQuestion ? (raceQuestion.question_number + '/' + round.question_target_count) : '-';
+            }
+            if (difficultyEl) {
+                difficultyEl.textContent = raceQuestion && raceQuestion.question ? String(raceQuestion.question.difficulty || '-') : '-';
+            }
+            if (deadlineEl) {
+                if (raceQuestion && raceQuestion.state === 'QUESTION_ACTIVE' && raceQuestion.deadline_epoch_ms) {
+                    const remaining = Math.max(0, Math.ceil((Number(raceQuestion.deadline_epoch_ms) - Date.now()) / 1000));
+                    deadlineEl.textContent = remaining > 0 ? remaining + ' detik' : 'Waktu habis';
+                } else {
+                    deadlineEl.textContent = '-';
+                }
+            }
+            if (answeredEl) {
+                if (raceQuestion && Array.isArray(raceQuestion.answers)) {
+                    const answeredCount = raceQuestion.answers.filter((answer) => answer.answered).length;
+                    answeredEl.textContent = answeredCount + '/' + raceQuestion.answers.length;
+                } else {
+                    answeredEl.textContent = '-';
+                }
+            }
+            if (leaderEl) {
+                const sorted = (snapshot.teams || []).slice().sort((a, b) => (b.score - a.score) || (b.position - a.position));
+                leaderEl.textContent = sorted.length > 0 ? sorted[0].name + ' (' + sorted[0].score + ' poin)' : '-';
             }
         }
 
@@ -800,7 +863,6 @@
             [pauseButton, 'pause'],
             [resumeButton, 'resume'],
             [skipTurnButton, 'skip-turn'],
-            [forceTimeoutButton, 'force-timeout'],
             [startTimerButton, 'start-timer'],
         ].forEach(([button, action]) => {
             if (!button) {
@@ -810,6 +872,28 @@
                 teacherAction(action, button);
             });
         });
+
+        if (forceTimeoutButton) {
+            forceTimeoutButton.addEventListener('click', function () {
+                if (isRaceTeamDevice(runtime.getSnapshot())) {
+                    teacherRaceForceResolve(forceTimeoutButton);
+                } else {
+                    teacherAction('force-timeout', forceTimeoutButton);
+                }
+            });
+        }
+
+        function teacherRaceForceResolve(button) {
+            button.disabled = true;
+            runtime.setError('');
+            jsonFetch('/api/v1/rooms/' + config.roomUuid + '/race-question/resolve', {
+                method: 'POST',
+                body: JSON.stringify({force: true}),
+            })
+                .then(runtime.refresh)
+                .catch((error) => runtime.setError(error.message))
+                .finally(drawTeacherControl);
+        }
 
         function teacherAction(action, button) {
             button.disabled = true;
@@ -875,6 +959,8 @@
         'snake.redemption_resolved',
         'ladder.challenge_started',
         'ladder.challenge_resolved',
+        'race.question_resolved',
+        'race.round_completed',
         'game.finished',
     ]);
 
@@ -891,6 +977,14 @@
                         return;
                     }
                     seenEvents.add(event.event_id);
+
+                    if (event.event === 'game.finished') {
+                        // A finish always takes priority: drop anything still queued/animating
+                        // instead of waiting behind it.
+                        overlayQueue.length = 0;
+                        sequenceBusy = runSequencedEvent(event, snapshot);
+                        return;
+                    }
 
                     if (SEQUENCED_EVENTS.has(event.event)) {
                         sequenceBusy = sequenceBusy
@@ -946,11 +1040,68 @@
                     ? (event.payload.is_correct ? 'correct' : 'snake')
                     : (event.payload.is_correct ? 'ladder' : 'wrong'));
                 return runMovementSequence(event, snapshot, event.payload.team_uuid, event.payload.is_correct);
+            case 'race.question_resolved':
+                return runRaceQuestionResolvedSequence(event, snapshot);
+            case 'race.round_completed':
+                return runRaceRoundCompletedSequence(event, snapshot);
             case 'game.finished':
                 return runWinnerSequence(event, snapshot);
             default:
                 return Promise.resolve();
         }
+    }
+
+    function runRaceQuestionResolvedSequence(event, snapshot) {
+        const movementMap = event.payload && event.payload.movement;
+        const board = document.querySelector('[data-board]');
+        if (!movementMap || !board) {
+            return Promise.resolve();
+        }
+
+        const entries = Object.values(movementMap);
+        const fastestUuids = event.payload.fastest_team_uuids || [];
+        const walks = entries.map((entry) => {
+            const team = (snapshot.teams || []).find((item) => item.uuid === entry.team_uuid);
+
+            return animateTeamMovement(entry, team, snapshot, board);
+        });
+
+        return Promise.all(walks).then(() => {
+            const anyCorrect = entries.some((entry) => entry.outcome === 'CORRECT');
+            const parts = entries.map((entry) => {
+                const name = teamNameByUuid(entry.team_uuid, snapshot);
+                const outcomeLabel = entry.outcome === 'CORRECT' ? 'Benar' : (entry.outcome === 'TIMEOUT' ? 'Waktu habis' : 'Salah');
+
+                return name + ': ' + outcomeLabel + (fastestUuids.includes(entry.team_uuid) ? ' ⚡' : '');
+            });
+
+            playProjectorCue(anyCorrect ? 'correct' : 'wrong');
+
+            return GameFx.banner({
+                tone: anyCorrect ? 'correct' : 'wrong',
+                icon: anyCorrect ? '✅' : '❌',
+                title: 'Hasil Soal ' + (event.payload.question_number || ''),
+                body: parts.join(' · '),
+                durationMs: 2800,
+            });
+        });
+    }
+
+    function runRaceRoundCompletedSequence(event, snapshot) {
+        const payload = event.payload || {};
+        const winnerNames = (payload.winner_team_uuids || [])
+            .map((uuid) => teamNameByUuid(uuid, snapshot))
+            .filter(Boolean);
+
+        playProjectorCue('bonus');
+
+        return GameFx.banner({
+            tone: 'bonus',
+            icon: '🏁',
+            title: 'Checkpoint Ronde ' + (payload.round_number || ''),
+            body: winnerNames.length > 0 ? 'Juara ronde: ' + winnerNames.join(', ') + ' (+bonus skor)' : 'Ronde selesai',
+            durationMs: 3200,
+        });
     }
 
     function runDiceRolledSequence(event, snapshot) {
@@ -1031,15 +1182,20 @@
 
     function runWinnerSequence(event, snapshot) {
         const board = document.querySelector('[data-board]');
-        const team = (snapshot.teams || []).find((item) => item.uuid === event.payload.winner_team_uuid);
-        if (!board || !team) {
+        const payload = event.payload || {};
+        const winnerUuids = payload.winner_team_uuids || (payload.winner_team_uuid ? [payload.winner_team_uuid] : []);
+        const winners = winnerUuids
+            .map((uuid) => (snapshot.teams || []).find((item) => item.uuid === uuid))
+            .filter(Boolean);
+        if (!board || winners.length === 0) {
             return Promise.resolve();
         }
-        const point = viewportTileCenter(board, Number(team.position));
+        const point = viewportTileCenter(board, Number(winners[0].position));
+        const names = winners.map((team) => team.name).join(' & ');
         if (!point) {
             return Promise.resolve();
         }
-        return GameFx.celebrateWinner(point.x, point.y, team.name);
+        return GameFx.celebrateWinner(point.x, point.y, names);
     }
 
     function movementFeedbackText(payload) {
@@ -1145,13 +1301,14 @@
 
     function animateMovementEvent(event, snapshot, teamUuid) {
         const movement = event.payload && event.payload.movement;
-        if (!movement || Number(movement.from) === Number(movement.to)) {
-            return Promise.resolve();
-        }
-
         const board = document.querySelector('[data-board]');
         const team = (snapshot.teams || []).find((item) => item.uuid === teamUuid);
-        if (!board || !team) {
+
+        return animateTeamMovement(movement, team, snapshot, board);
+    }
+
+    function animateTeamMovement(movement, team, snapshot, board) {
+        if (!movement || !team || !board || Number(movement.from) === Number(movement.to)) {
             return Promise.resolve();
         }
 

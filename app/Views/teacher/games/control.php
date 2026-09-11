@@ -51,6 +51,15 @@
     </div>
 </section>
 
+<section class="panel hidden" data-race-status-panel style="margin-top:16px">
+    <h2>Status Soal Quiz Race</h2>
+    <p>Ronde <strong data-race-status-round>-</strong> / Soal <strong data-race-status-question>-</strong></p>
+    <p>Difficulty: <strong data-race-status-difficulty>-</strong></p>
+    <p>Sisa waktu: <strong data-race-status-deadline>-</strong></p>
+    <p>Tim sudah menjawab: <strong data-race-status-answered>-</strong></p>
+    <p>Sementara memimpin: <strong data-race-status-leader>-</strong></p>
+</section>
+
 <section class="panel roster-panel hidden" data-roster-panel style="margin-top:16px">
     <h2>Tambah Tim</h2>
     <p class="muted">Room ini memakai Mode Tanpa Device — tambahkan tim di sini sebelum menekan Start, tidak ada join PIN.</p>
