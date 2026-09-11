@@ -4,9 +4,12 @@
 <?php
 $room = $report['room'];
 $winner = $report['winner'];
+$winners = $report['winners'];
 $soalPage = $report['questionStatsPage'];
 $jawabPage = $report['answersPage'];
 $baseUrl = '/teacher/games/' . $room['public_uuid'] . '/report';
+$finishLabels = ['TRACK_FINISH' => 'Mencapai garis akhir', 'QUESTION_LIMIT' => 'Batas soal tercapai'];
+$outcomeLabels = ['CORRECT' => 'Benar', 'WRONG' => 'Belum tepat', 'TIMEOUT' => 'Waktu habis'];
 ?>
 <div class="topbar">
     <div>
@@ -27,15 +30,37 @@ $baseUrl = '/teacher/games/' . $room['public_uuid'] . '/report';
 
 <section class="panel report-winner <?= $winner ? 'is-winner' : 'is-pending' ?>" style="margin-top:16px">
     <?php if ($winner): ?>
-        <p class="muted">Pemenang (Juara Papan)</p>
-        <h2><?= esc($winner['name']) ?></h2>
-        <p>Kotak <strong><?= esc((string) $winner['position']) ?></strong> / <?= esc((string) ($room['max_position'] ?? '-')) ?> · Skor <strong><?= esc((string) $winner['score']) ?></strong></p>
+        <p class="muted"><?= count($winners) > 1 ? 'Pemenang Bersama' : 'Pemenang' ?> · <?= esc($finishLabels[$report['finish_reason']] ?? 'Game selesai') ?></p>
+        <h2><?= esc(implode(', ', array_column($winners, 'name'))) ?></h2>
+        <p>Juara utama: <strong><?= esc($winner['name']) ?></strong> · Kotak <strong><?= esc((string) $winner['position']) ?></strong> / <?= esc((string) ($room['max_position'] ?? '-')) ?> · Skor <strong><?= esc((string) $winner['score']) ?></strong></p>
     <?php else: ?>
         <p class="muted">Pemenang</p>
         <h2>Belum ada pemenang</h2>
         <p class="muted">Status room: <?= esc($room['status']) ?>. Juara utama = tim pertama sampai finish.</p>
     <?php endif ?>
 </section>
+
+<?php if ($report['rounds'] !== []): ?>
+<section class="panel" style="margin-top:16px">
+    <h2>Ringkasan Ronde</h2>
+    <table class="table">
+        <thead>
+        <tr><th>Ronde</th><th>Status</th><th>Soal</th><th>Pemenang Ronde</th><th>Hadiah</th></tr>
+        </thead>
+        <tbody>
+        <?php foreach ($report['rounds'] as $round): ?>
+            <tr>
+                <td><?= esc((string) $round['round_number']) ?></td>
+                <td><?= esc($round['state']) ?></td>
+                <td><?= esc((string) $round['question_resolved_count']) ?> / <?= esc((string) $round['question_target_count']) ?></td>
+                <td><?= $round['winner_team_names'] === [] ? '-' : esc(implode(', ', $round['winner_team_names'])) ?></td>
+                <td><?= $round['prize_points'] > 0 ? esc((string) $round['prize_points']) . ' poin per pemenang' : '-' ?></td>
+            </tr>
+        <?php endforeach ?>
+        </tbody>
+    </table>
+</section>
+<?php endif ?>
 
 <section class="panel" style="margin-top:16px">
     <h2>Leaderboard Final</h2>
@@ -121,20 +146,30 @@ $baseUrl = '/teacher/games/' . $room['public_uuid'] . '/report';
     <h2>Jawaban Tim</h2>
     <table class="table">
         <thead>
-        <tr><th>Tim</th><th>Soal</th><th>Jawaban</th><th>Status</th><th>Waktu</th></tr>
+        <tr><th>Tim</th><th>Urutan</th><th>Soal</th><th>Jawaban</th><th>Hasil</th><th>Respons</th><th>Poin</th><th>Waktu</th></tr>
         </thead>
         <tbody>
         <?php foreach ($jawabPage['items'] as $answer): ?>
             <tr>
                 <td><?= esc($answer['team_name']) ?></td>
+                <td>
+                    <?= $answer['round_number'] === null ? 'Giliran ' . esc((string) $answer['question_number']) : 'Ronde ' . esc((string) $answer['round_number']) . ' / Soal ' . esc((string) $answer['question_number']) ?>
+                </td>
                 <td><?= esc($answer['question_stem']) ?></td>
-                <td><?= esc($answer['option_label'] ?? '-') ?>. <?= esc($answer['answer_text']) ?></td>
-                <td><?= (int) $answer['is_correct'] === 1 ? 'Benar' : 'Belum tepat' ?></td>
+                <td><?= esc($answer['option_label'] ?? '-') ?><?= $answer['answer_text'] ? '. ' . esc((string) $answer['answer_text']) : '' ?></td>
+                <td><?= esc($outcomeLabels[$answer['outcome']] ?? $answer['outcome']) ?></td>
+                <td><?= $answer['response_ms'] === null ? '-' : esc(number_format($answer['response_ms'] / 1000, 2, ',', '.')) . ' dtk' ?></td>
+                <td>
+                    <?= $answer['score_delta'] === null ? '-' : esc(($answer['score_delta'] > 0 ? '+' : '') . (string) $answer['score_delta']) ?>
+                    <?php if ($answer['score_breakdown'] !== []): ?>
+                        <small class="muted">Dasar <?= esc((string) ($answer['score_breakdown']['answer'] ?? 0)) ?> · Waktu <?= esc((string) ($answer['score_breakdown']['time_bonus'] ?? 0)) ?> · Streak <?= esc((string) ($answer['score_breakdown']['streak_bonus'] ?? 0)) ?></small>
+                    <?php endif ?>
+                </td>
                 <td><?= esc($answer['answered_at'] ?? '-') ?></td>
             </tr>
         <?php endforeach ?>
         <?php if ($jawabPage['items'] === []): ?>
-            <tr><td colspan="5" class="muted">Belum ada jawaban.</td></tr>
+            <tr><td colspan="8" class="muted">Belum ada jawaban.</td></tr>
         <?php endif ?>
         </tbody>
     </table>

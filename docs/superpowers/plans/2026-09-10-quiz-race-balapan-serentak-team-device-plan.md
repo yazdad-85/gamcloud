@@ -739,7 +739,7 @@ git commit -m "feat: add multi-round Quiz Race control and projector"
 - Modify: `tests/database/GameReportServiceTest.php`
 - Modify: `tests/database/GameEngineHardeningTest.php`
 
-- [ ] **Step 1: Pause/resume tests and implementation**
+- [x] **Step 1: Pause/resume tests and implementation**
 
 - Pause active question by storing remaining milliseconds and clearing deadline.
 - Pause resolved question or completed-round reveal by preserving remaining reveal time.
@@ -747,17 +747,17 @@ git commit -m "feat: add multi-round Quiz Race control and projector"
 - Resume rebuilds the appropriate deadline without granting material extra time.
 - Repeated pause/resume remains stable.
 
-- [ ] **Step 2: Question selection and mutation protection**
+- [x] **Step 2: Question selection and mutation protection**
 
 - Union `game_round_questions.question_id` into `usedQuestionIdsForRoom()`.
 - Prevent edit/delete of questions or options used by active/resolving race questions.
 - Include historical round answers in option usage checks.
 
-- [ ] **Step 3: Reports**
+- [x] **Step 3: Reports**
 
 Normalize turn answers and round answers into the current report payload. Add round/question number, outcome, response time, score breakdown, round prizes, finish reason, and all winner UUIDs. Preserve legacy `winner` while adding `winners`.
 
-- [ ] **Step 4: Explicit room cleanup**
+- [x] **Step 4: Explicit room cleanup**
 
 Delete in safe order:
 
@@ -769,11 +769,11 @@ Delete in safe order:
 
 Assert transaction success and add a deletion regression test.
 
-- [ ] **Step 5: Event commit ordering**
+- [x] **Step 5: Event commit ordering**
 
 Do not publish realtime state before its database transaction commits. Add a failure-path test proving rolled-back resolution leaves no resolved/finished event or outbox payload.
 
-- [ ] **Step 6: Run and commit**
+- [x] **Step 6: Run and commit**
 
 ```bash
 ./vendor/bin/phpunit tests/database/QuizRaceTeamDeviceTest.php

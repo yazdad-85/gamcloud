@@ -1306,10 +1306,21 @@ class GameEngine
             throw new DomainException('Game hanya bisa dijeda saat sedang bermain.');
         }
 
+        $this->db->transStart();
         (new GameRoomModel())->update($room['id'], [
             'status' => 'PAUSED',
         ]);
+        if ($this->isTeamDeviceRace($room)) {
+            $this->pauseRaceTimers((int) $room['id']);
+        }
         $this->bumpRoom((int) $room['id']);
+        $this->db->transComplete();
+        if (! $this->db->transStatus()) {
+            $this->db->resetTransStatus();
+
+            throw new DomainException('Pause gagal disimpan secara atomik.');
+        }
+
         $room = $this->roomById((int) $room['id']);
         $this->recordEvent($room, 'game.paused', []);
         $this->recordEvent($room, 'teacher.override', ['action' => 'pause']);
@@ -1325,6 +1336,7 @@ class GameEngine
             throw new DomainException('Game hanya bisa dilanjutkan dari status PAUSED.');
         }
 
+        $this->db->transStart();
         $turn = $this->activeTurn((int) $room['id']);
         $updates = ['status' => 'PLAYING'];
         if ($turn !== null && $turn['state'] === 'QUESTION_ACTIVE') {
@@ -1332,14 +1344,90 @@ class GameEngine
                 'question_deadline_at' => date('Y-m-d H:i:s', time() + (int) $room['question_time_seconds']),
             ]);
         }
+        if ($this->isTeamDeviceRace($room)) {
+            $this->resumeRaceTimers((int) $room['id']);
+        }
 
         (new GameRoomModel())->update($room['id'], $updates);
         $this->bumpRoom((int) $room['id']);
+        $this->db->transComplete();
+        if (! $this->db->transStatus()) {
+            $this->db->resetTransStatus();
+
+            throw new DomainException('Resume gagal disimpan secara atomik.');
+        }
+
         $room = $this->roomById((int) $room['id']);
         $this->recordEvent($room, 'game.resumed', []);
         $this->recordEvent($room, 'teacher.override', ['action' => 'resume']);
 
         return $this->snapshot($room['public_uuid']);
+    }
+
+    private function pauseRaceTimers(int $roomId): void
+    {
+        $nowMs = $this->currentEpochMs();
+
+        $round = $this->activeRaceRound($roomId);
+        if ($round !== null) {
+            $question = (new GameRoundQuestionModel())
+                ->where('round_id', $round['id'])
+                ->whereIn('state', ['QUESTION_ACTIVE', 'QUESTION_RESOLVED'])
+                ->first();
+            if ($question !== null) {
+                if ($question['state'] === 'QUESTION_ACTIVE') {
+                    $remaining = max(0, (int) $question['deadline_epoch_ms'] - $nowMs);
+                } else {
+                    $remaining = max(0, (int) $question['reveal_until_epoch_ms'] - $nowMs);
+                }
+                (new GameRoundQuestionModel())->update($question['id'], ['paused_remaining_ms' => $remaining]);
+            }
+        }
+
+        $completedRound = (new GameRoundModel())->where('room_id', $roomId)->where('state', 'ROUND_COMPLETED')->first();
+        if ($completedRound !== null) {
+            $remaining = max(0, (int) $completedRound['reveal_until_epoch_ms'] - $nowMs);
+            (new GameRoundModel())->update($completedRound['id'], ['paused_remaining_ms' => $remaining]);
+        }
+    }
+
+    private function resumeRaceTimers(int $roomId): void
+    {
+        $nowMs = $this->currentEpochMs();
+
+        $round = $this->activeRaceRound($roomId);
+        if ($round !== null) {
+            $question = (new GameRoundQuestionModel())
+                ->where('round_id', $round['id'])
+                ->whereIn('state', ['QUESTION_ACTIVE', 'QUESTION_RESOLVED'])
+                ->first();
+            if ($question !== null && $question['paused_remaining_ms'] !== null) {
+                $deadlineMs = $nowMs + (int) $question['paused_remaining_ms'];
+                if ($question['state'] === 'QUESTION_ACTIVE') {
+                    (new GameRoundQuestionModel())->update($question['id'], [
+                        'deadline_epoch_ms' => $deadlineMs,
+                        'deadline_at' => date('Y-m-d H:i:s', intdiv($deadlineMs, 1000)),
+                        'paused_remaining_ms' => null,
+                    ]);
+                } else {
+                    (new GameRoundQuestionModel())->update($question['id'], [
+                        'reveal_until_epoch_ms' => $deadlineMs,
+                        'reveal_until' => date('Y-m-d H:i:s', intdiv($deadlineMs, 1000)),
+                        'paused_remaining_ms' => null,
+                    ]);
+                }
+            }
+        }
+
+        $completedRound = (new GameRoundModel())->where('room_id', $roomId)->where('state', 'ROUND_COMPLETED')->first();
+        if ($completedRound !== null && $completedRound['paused_remaining_ms'] !== null) {
+            $revealMs = $nowMs + (int) $completedRound['paused_remaining_ms'];
+            (new GameRoundModel())->update($completedRound['id'], [
+                'reveal_until_epoch_ms' => $revealMs,
+                'reveal_until' => date('Y-m-d H:i:s', intdiv($revealMs, 1000)),
+                'paused_remaining_ms' => null,
+            ]);
+        }
     }
 
     public function skipTurn(string $roomUuid): array
@@ -2465,12 +2553,27 @@ class GameEngine
             static fn (array $turn): int => (int) $turn['id'],
             (new GameTurnModel())->select('id')->where('room_id', $room['id'])->findAll(),
         );
+        $roundIds = array_map(
+            static fn (array $round): int => (int) $round['id'],
+            (new GameRoundModel())->select('id')->where('room_id', $room['id'])->findAll(),
+        );
+        $roundQuestionIds = $roundIds === [] ? [] : array_map(
+            static fn (array $question): int => (int) $question['id'],
+            (new GameRoundQuestionModel())->select('id')->whereIn('round_id', $roundIds)->findAll(),
+        );
         $board = (new BoardTemplateModel())->find($room['board_template_id']);
 
         $this->db->transStart();
 
         if ($turnIds !== []) {
             $this->db->table('game_answers')->whereIn('turn_id', $turnIds)->delete();
+        }
+        if ($roundQuestionIds !== []) {
+            $this->db->table('game_round_answers')->whereIn('round_question_id', $roundQuestionIds)->delete();
+        }
+        if ($roundIds !== []) {
+            $this->db->table('game_round_questions')->whereIn('round_id', $roundIds)->delete();
+            $this->db->table('game_rounds')->whereIn('id', $roundIds)->delete();
         }
 
         $this->db->table('score_transactions')->where('room_id', $room['id'])->delete();
@@ -2484,6 +2587,8 @@ class GameEngine
             ->orLike('scope', 'answer:' . $room['public_uuid'] . ':', 'after')
             ->orLike('scope', 'mystery_choose:' . $room['public_uuid'] . ':', 'after')
             ->orLike('scope', 'mystery_answer:' . $room['public_uuid'] . ':', 'after')
+            ->orLike('scope', 'race-question-answer:' . $room['public_uuid'] . ':', 'after')
+            ->orLike('scope', 'race-question-resolve:' . $room['public_uuid'] . ':', 'after')
             ->groupEnd()
             ->delete();
         $this->db->table('game_rooms')->where('id', $room['id'])->delete();
@@ -2492,6 +2597,11 @@ class GameEngine
         }
 
         $this->db->transComplete();
+        if (! $this->db->transStatus()) {
+            $this->db->resetTransStatus();
+
+            throw new DomainException('Room gagal dihapus secara atomik.');
+        }
     }
 
     public function roomByUuid(string $roomUuid): array

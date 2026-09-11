@@ -232,20 +232,29 @@ class QuestionBankService
 
     private function assertNotUsedByActiveRoom(int $questionId, string $action): void
     {
-        $isUsed = $this->db->table('game_turns gt')
+        $isUsedByTurn = $this->db->table('game_turns gt')
             ->join('game_rooms gr', 'gr.id = gt.room_id')
             ->where('gt.question_id', $questionId)
             ->whereIn('gr.status', ['PLAYING', 'PAUSED'])
             ->countAllResults() > 0;
 
-        if ($isUsed) {
+        $isUsedByRace = $this->db->table('game_round_questions grq')
+            ->join('game_rounds gr', 'gr.id = grq.round_id')
+            ->join('game_rooms room', 'room.id = gr.room_id')
+            ->where('grq.question_id', $questionId)
+            ->whereIn('grq.state', ['QUESTION_ACTIVE', 'QUESTION_RESOLVING'])
+            ->whereIn('room.status', ['PLAYING', 'PAUSED'])
+            ->countAllResults() > 0;
+
+        if ($isUsedByTurn || $isUsedByRace) {
             throw new DomainException('Soal sedang dipakai dalam game aktif sehingga belum dapat ' . $action . '.');
         }
     }
 
     private function optionHasAnswers(int $optionId): bool
     {
-        return $this->db->table('game_answers')->where('option_id', $optionId)->countAllResults() > 0;
+        return $this->db->table('game_answers')->where('option_id', $optionId)->countAllResults() > 0
+            || $this->db->table('game_round_answers')->where('option_id', $optionId)->countAllResults() > 0;
     }
 
     private function assertTransactionSucceeded(): void

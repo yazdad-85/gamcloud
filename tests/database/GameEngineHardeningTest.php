@@ -5,6 +5,9 @@ use App\Models\BoardTemplateModel;
 use App\Models\GameAnswerModel;
 use App\Models\GameEventModel;
 use App\Models\GameRoomModel;
+use App\Models\GameRoundAnswerModel;
+use App\Models\GameRoundModel;
+use App\Models\GameRoundQuestionModel;
 use App\Models\GameTeamModel;
 use App\Models\GameTurnModel;
 use App\Models\QuestionModel;
@@ -1131,6 +1134,50 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $engine->deleteRoom($room['uuid']);
 
         $this->assertNull((new GameRoomModel())->where('public_uuid', $room['uuid'])->first());
+    }
+
+    public function testDeleteFinishedQuizRaceRemovesRoundDataAndIdempotencyKeys(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Delete Quiz Race Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+        ])['room'];
+        $firstTeam = $engine->joinByPin($room['pin'], 'Tim Race Hapus A')['team'];
+        $engine->joinByPin($room['pin'], 'Tim Race Hapus B');
+        $engine->start($room['uuid']);
+
+        $roomRow = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first();
+        $round = (new GameRoundModel())->where('room_id', $roomRow['id'])->first();
+        $roundQuestion = (new GameRoundQuestionModel())->where('round_id', $round['id'])->first();
+        $engine->raceQuestionAnswer(
+            $room['uuid'],
+            $firstTeam['public_uuid'],
+            $this->correctOptionId((int) $roundQuestion['question_id']),
+            'answer-delete-race'
+        );
+        $engine->resolveRaceQuestion($room['uuid'], true, 'resolve-delete-race');
+        (new GameRoomModel())->update($roomRow['id'], ['status' => 'FINISHED']);
+
+        $this->assertGreaterThan(0, (new GameRoundAnswerModel())->where('round_question_id', $roundQuestion['id'])->countAllResults());
+        $this->assertSame(2, $this->db->table('idempotency_keys')
+            ->groupStart()
+            ->like('scope', 'race-question-answer:' . $room['uuid'] . ':', 'after')
+            ->orLike('scope', 'race-question-resolve:' . $room['uuid'] . ':', 'after')
+            ->groupEnd()
+            ->countAllResults());
+
+        $engine->deleteRoom($room['uuid']);
+
+        $this->assertSame(0, (new GameRoundAnswerModel())->where('round_question_id', $roundQuestion['id'])->countAllResults());
+        $this->assertSame(0, (new GameRoundQuestionModel())->where('round_id', $round['id'])->countAllResults());
+        $this->assertSame(0, (new GameRoundModel())->where('room_id', $roomRow['id'])->countAllResults());
+        $this->assertSame(0, $this->db->table('idempotency_keys')
+            ->groupStart()
+            ->like('scope', 'race-question-answer:' . $room['uuid'] . ':', 'after')
+            ->orLike('scope', 'race-question-resolve:' . $room['uuid'] . ':', 'after')
+            ->groupEnd()
+            ->countAllResults());
     }
 
     public function testSnapshotFlagsExpiredRoomAsIsExpired(): void

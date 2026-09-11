@@ -1,6 +1,10 @@
 <?php
 
 use App\Database\Seeds\DemoGameSeeder;
+use App\Models\GameRoomModel;
+use App\Models\GameRoundAnswerModel;
+use App\Models\GameRoundModel;
+use App\Models\GameRoundQuestionModel;
 use App\Models\QuestionModel;
 use App\Models\QuestionOptionModel;
 use App\Models\QuestionTopicModel;
@@ -109,6 +113,94 @@ final class QuestionBankServiceTest extends CIUnitTestCase
         $this->expectExceptionMessage('sedang dipakai dalam game aktif');
 
         (new QuestionBankService())->delete($question);
+    }
+
+    public function testQuestionUsedByActiveRaceCannotBeDeleted(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'CRUD Active Race Question', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+        ])['room'];
+        $engine->joinByPin($room['pin'], 'Tim Race CRUD');
+        $engine->start($room['uuid']);
+
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first();
+        $round = (new GameRoundModel())->where('room_id', $storedRoom['id'])->first();
+        $roundQuestion = (new GameRoundQuestionModel())
+            ->where('round_id', $round['id'])
+            ->where('state', 'QUESTION_ACTIVE')
+            ->first();
+        $question = (new QuestionModel())->find($roundQuestion['question_id']);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('sedang dipakai dalam game aktif');
+
+        (new QuestionBankService())->delete($question);
+    }
+
+    public function testUpdateKeepsOptionReferencedByHistoricalRaceAnswer(): void
+    {
+        $topicId = $this->topic(1, 'CRUD Riwayat Race');
+        $service = new QuestionBankService();
+        $question = $service->create(1, $this->payload($topicId));
+        $option = (new QuestionOptionModel())
+            ->where('question_id', $question['id'])
+            ->where('label', 'E')
+            ->first();
+
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'CRUD Historical Race Answer', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+        ])['room'];
+        $team = $engine->joinByPin($room['pin'], 'Tim Riwayat')['team'];
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first();
+        $roundId = (new GameRoundModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'room_id' => $storedRoom['id'],
+            'round_number' => 1,
+            'state' => 'ROUND_CLOSED',
+            'question_target_count' => 1,
+            'question_resolved_count' => 1,
+            'difficulty_schedule_json' => ['MEDIUM'],
+        ], true);
+        $roundQuestionId = (new GameRoundQuestionModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'round_id' => $roundId,
+            'question_number' => 1,
+            'question_id' => $question['id'],
+            'difficulty' => 'MEDIUM',
+            'state' => 'QUESTION_CLOSED',
+            'answer_count' => 1,
+            'started_at' => date('Y-m-d H:i:s'),
+            'started_at_epoch_ms' => (int) floor(microtime(true) * 1000),
+            'deadline_at' => date('Y-m-d H:i:s', time() + 30),
+            'deadline_epoch_ms' => (int) floor(microtime(true) * 1000) + 30000,
+        ], true);
+        (new GameRoundAnswerModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'round_question_id' => $roundQuestionId,
+            'team_id' => $team['id'],
+            'question_id' => $question['id'],
+            'option_id' => $option['id'],
+            'answer_text' => $option['body'],
+            'is_correct' => 0,
+            'outcome' => 'WRONG',
+            'answered_at' => date('Y-m-d H:i:s'),
+            'answered_at_epoch_ms' => (int) floor(microtime(true) * 1000),
+            'response_ms' => 1000,
+            'score_delta' => 0,
+            'score_breakdown_json' => [],
+        ]);
+
+        $payload = $this->payload($topicId);
+        unset($payload['options']['E']);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('Opsi E sudah tercatat dalam laporan game');
+
+        $service->update($question, $payload);
     }
 
     private function topic(int $teacherId, string $name): int

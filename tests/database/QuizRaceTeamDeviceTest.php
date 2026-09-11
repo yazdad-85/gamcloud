@@ -985,6 +985,162 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $this->assertArrayHasKey('leaderboard', $snapshot);
     }
 
+    public function testPauseFreezesActiveQuestionDeadlineAndResumeRebuildsRemainingTime(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        $startedAtEpochMs = (int) $fixture['question']['started_at_epoch_ms'];
+        $pauseAtEpochMs = $startedAtEpochMs + 10000;
+        $resumeAtEpochMs = $pauseAtEpochMs + 300000;
+        $engine = $this->engineAt([$pauseAtEpochMs, $resumeAtEpochMs, $resumeAtEpochMs]);
+
+        $engine->pause($fixture['room']['uuid']);
+        $pausedQuestion = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertSame('PAUSED', (new GameRoomModel())->find($fixture['stored_room']['id'])['status']);
+        $this->assertSame(20000, $pausedQuestion['paused_remaining_ms']);
+
+        $engine->resume($fixture['room']['uuid']);
+        $resumedQuestion = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertNull($resumedQuestion['paused_remaining_ms']);
+        $this->assertSame($resumeAtEpochMs + 20000, $resumedQuestion['deadline_epoch_ms']);
+        $this->assertSame('PLAYING', (new GameRoomModel())->find($fixture['stored_room']['id'])['status']);
+    }
+
+    public function testRaceQuestionAnswerIsRejectedWhilePaused(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $fixture['engine']->pause($fixture['room']['uuid']);
+        $option = $this->correctOptionForQuestion($fixture['question']);
+
+        $this->assertDomainFailure(
+            fn () => $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $option['id']),
+            'PLAYING'
+        );
+        $this->assertSame(0, (new GameRoundAnswerModel())->where('round_question_id', $fixture['question']['id'])->countAllResults());
+    }
+
+    public function testPauseFreezesResolvedQuestionRevealAndResumeRebuildsIt(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+
+        $resolved = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertSame('QUESTION_RESOLVED', $resolved['state']);
+        $revealUntil = (int) $resolved['reveal_until_epoch_ms'];
+        $pauseAtEpochMs = $revealUntil - 1000;
+        $resumeAtEpochMs = $pauseAtEpochMs + 120000;
+        $engine = $this->engineAt([$pauseAtEpochMs, $resumeAtEpochMs, $resumeAtEpochMs]);
+
+        $engine->pause($fixture['room']['uuid']);
+        $pausedQuestion = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertSame(1000, $pausedQuestion['paused_remaining_ms']);
+
+        $engine->resume($fixture['room']['uuid']);
+        $resumedQuestion = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertNull($resumedQuestion['paused_remaining_ms']);
+        $this->assertSame($resumeAtEpochMs + 1000, $resumedQuestion['reveal_until_epoch_ms']);
+        $this->assertSame('QUESTION_RESOLVED', $resumedQuestion['state']);
+    }
+
+    public function testPauseFreezesCompletedRoundCheckpointRevealAndResumeRebuildsIt(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        (new GameRoundModel())->update($fixture['round']['id'], ['question_target_count' => 1]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $round = (new GameRoundModel())->find($fixture['round']['id']);
+        $this->assertSame('ROUND_COMPLETED', $round['state']);
+        $revealUntil = (int) $round['reveal_until_epoch_ms'];
+        $pauseAtEpochMs = $revealUntil - 2000;
+        $resumeAtEpochMs = $pauseAtEpochMs + 60000;
+        $engine = $this->engineAt([$pauseAtEpochMs, $resumeAtEpochMs, $resumeAtEpochMs]);
+
+        $engine->pause($fixture['room']['uuid']);
+        $pausedRound = (new GameRoundModel())->find($fixture['round']['id']);
+        $this->assertSame(2000, $pausedRound['paused_remaining_ms']);
+
+        $engine->resume($fixture['room']['uuid']);
+        $resumedRound = (new GameRoundModel())->find($fixture['round']['id']);
+        $this->assertNull($resumedRound['paused_remaining_ms']);
+        $this->assertSame($resumeAtEpochMs + 2000, $resumedRound['reveal_until_epoch_ms']);
+        $this->assertSame('ROUND_COMPLETED', $resumedRound['state']);
+    }
+
+    public function testRepeatedPauseResumeOnActiveQuestionRemainsStable(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        $startedAtEpochMs = (int) $fixture['question']['started_at_epoch_ms'];
+        $t1 = $startedAtEpochMs + 5000;
+        $t2 = $t1 + 60000;
+        $t3 = $t2 + 5000;
+        $t4 = $t3 + 60000;
+        $engine = $this->engineAt([$t1, $t2, $t3, $t4]);
+
+        $engine->pause($fixture['room']['uuid']);
+        $engine->resume($fixture['room']['uuid']);
+        $afterFirstCycle = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertSame($t2 + 25000, $afterFirstCycle['deadline_epoch_ms']);
+
+        $engine->pause($fixture['room']['uuid']);
+        $secondPause = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertSame(20000, $secondPause['paused_remaining_ms']);
+
+        $engine->resume($fixture['room']['uuid']);
+        $afterSecondCycle = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertNull($afterSecondCycle['paused_remaining_ms']);
+        $this->assertSame($t4 + 20000, $afterSecondCycle['deadline_epoch_ms']);
+        $this->assertSame('PLAYING', (new GameRoomModel())->find($fixture['stored_room']['id'])['status']);
+    }
+
+    public function testResolutionRollbackDoesNotPublishRaceEvents(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $table = $this->db->prefixTable('game_round_questions');
+        $this->db->query(
+            "CREATE TRIGGER fail_race_resolution "
+            . "BEFORE UPDATE OF state ON {$table} "
+            . "WHEN NEW.state = 'QUESTION_RESOLVED' "
+            . "BEGIN SELECT RAISE(ABORT, 'forced race resolution failure'); END"
+        );
+
+        try {
+            $fixture['engine']->resolveRaceQuestion(
+                $fixture['room']['uuid'],
+                true,
+                'forced-resolution-failure'
+            );
+            $this->fail('Resolusi seharusnya gagal dan di-rollback.');
+        } catch (\Throwable $error) {
+            $this->assertSame('Resolusi Quiz Race gagal disimpan secara atomik.', $error->getMessage());
+        } finally {
+            $this->db->query('DROP TRIGGER IF EXISTS fail_race_resolution');
+        }
+
+        $question = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertSame('QUESTION_ACTIVE', $question['state']);
+        $this->assertSame(0, (int) $question['answer_count']);
+        $this->assertSame(0, (new GameRoundAnswerModel())
+            ->where('round_question_id', $fixture['question']['id'])
+            ->countAllResults());
+        foreach (['race.question_resolved', 'game.finished'] as $eventType) {
+            $this->assertSame(0, $this->db->table('game_events')
+                ->where('room_id', $fixture['stored_room']['id'])
+                ->where('type', $eventType)
+                ->countAllResults());
+            $this->assertSame(0, $this->db->table('realtime_outbox')
+                ->where('room_id', $fixture['stored_room']['id'])
+                ->where('event', $eventType)
+                ->countAllResults());
+        }
+        $this->assertSame(0, $this->db->table('idempotency_keys')
+            ->where('scope', 'race-question-resolve:' . $fixture['room']['uuid'] . ':' . $fixture['question']['public_uuid'])
+            ->countAllResults());
+    }
+
     private function forceQuestionRevealElapsed(int $questionId): void
     {
         (new GameRoundQuestionModel())->update($questionId, ['reveal_until_epoch_ms' => 0]);

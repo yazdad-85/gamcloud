@@ -4,9 +4,12 @@ use App\Database\Seeds\DemoGameSeeder;
 use App\Models\GameAnswerModel;
 use App\Models\GameEventModel;
 use App\Models\GameRoomModel;
+use App\Models\GameRoundModel;
+use App\Models\GameRoundQuestionModel;
 use App\Models\GameTeamModel;
 use App\Models\GameTurnModel;
 use App\Models\QuestionModel;
+use App\Models\QuestionOptionModel;
 use App\Services\Game\GameEngine;
 use App\Services\Game\Uuid;
 use App\Services\Report\GameReportService;
@@ -210,6 +213,79 @@ final class GameReportServiceTest extends CIUnitTestCase
         $this->assertSame($a['public_uuid'], $report['winner']['public_uuid']);
         $this->assertSame('TIM A', $report['winner']['name']);
         $this->assertTrue($report['teams'][0]['is_board_winner']);
+    }
+
+    public function testQuizRaceReportNormalizesAnswersRoundsAndAllWinners(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Report Quiz Race', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+            'scoring' => ['time_bonus' => false, 'streak_bonus' => false],
+        ])['room'];
+        $firstTeam = $engine->joinByPin($room['pin'], 'TIM RACE A')['team'];
+        $secondTeam = $engine->joinByPin($room['pin'], 'TIM RACE B')['team'];
+        $engine->start($room['uuid']);
+
+        $roomRow = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first();
+        $round = (new GameRoundModel())->where('room_id', $roomRow['id'])->first();
+        (new GameRoundModel())->update($round['id'], ['question_target_count' => 1]);
+        $roundQuestion = (new GameRoundQuestionModel())->where('round_id', $round['id'])->first();
+        $correctOption = (new QuestionOptionModel())
+            ->where('question_id', $roundQuestion['question_id'])
+            ->where('is_correct', 1)
+            ->first();
+        $wrongOption = (new QuestionOptionModel())
+            ->where('question_id', $roundQuestion['question_id'])
+            ->where('is_correct', 0)
+            ->first();
+        $engine->raceQuestionAnswer($room['uuid'], $firstTeam['public_uuid'], (int) $correctOption['id']);
+        $engine->raceQuestionAnswer($room['uuid'], $secondTeam['public_uuid'], (int) $wrongOption['id']);
+        (new GameRoundQuestionModel())->update($roundQuestion['id'], ['reveal_until_epoch_ms' => 0]);
+        $engine->snapshot($room['uuid']);
+
+        $roomRow = (new GameRoomModel())->find($roomRow['id']);
+        $finishPayload = [
+            'event_id' => Uuid::v4(),
+            'event' => 'game.finished',
+            'room_uuid' => $room['uuid'],
+            'state_version' => (int) $roomRow['state_version'],
+            'occurred_at' => date(DATE_ATOM),
+            'payload' => [
+                'finish_reason' => 'QUESTION_LIMIT',
+                'winner_team_uuids' => [$firstTeam['public_uuid'], $secondTeam['public_uuid']],
+                'winner_team_uuid' => $firstTeam['public_uuid'],
+            ],
+        ];
+        (new GameEventModel())->insert([
+            'public_uuid' => $finishPayload['event_id'],
+            'room_id' => $roomRow['id'],
+            'type' => 'game.finished',
+            'state_version' => $finishPayload['state_version'],
+            'payload_json' => json_encode($finishPayload, JSON_UNESCAPED_SLASHES),
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        $report = (new GameReportService())->roomReport($roomRow);
+
+        $this->assertCount(2, $report['answers']);
+        $this->assertSame(['CORRECT', 'WRONG'], array_column($report['answers'], 'outcome'));
+        foreach ($report['answers'] as $answer) {
+            $this->assertSame('RACE_ROUND', $answer['source']);
+            $this->assertSame(1, $answer['round_number']);
+            $this->assertSame(1, $answer['question_number']);
+            $this->assertArrayHasKey('response_ms', $answer);
+            $this->assertArrayHasKey('score_delta', $answer);
+            $this->assertIsArray($answer['score_breakdown']);
+        }
+        $this->assertCount(1, $report['rounds']);
+        $this->assertSame('ROUND_COMPLETED', $report['rounds'][0]['state']);
+        $this->assertSame([$firstTeam['public_uuid']], $report['rounds'][0]['winner_team_uuids']);
+        $this->assertSame(100, $report['rounds'][0]['prize_points']);
+        $this->assertSame('QUESTION_LIMIT', $report['finish_reason']);
+        $this->assertSame([$firstTeam['public_uuid'], $secondTeam['public_uuid']], $report['winner_uuids']);
+        $this->assertCount(2, $report['winners']);
+        $this->assertSame($firstTeam['public_uuid'], $report['winner']['public_uuid']);
     }
 
     public function testRoomReportPaginationMetadataAndSlices(): void
