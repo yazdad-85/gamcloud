@@ -5,6 +5,7 @@ namespace App\Services\Game;
 use App\Models\BoardTemplateModel;
 use App\Models\GameAnswerModel;
 use App\Models\GameEventModel;
+use App\Models\GameRoundAnswerModel;
 use App\Models\GameRoundModel;
 use App\Models\GameRoundQuestionModel;
 use App\Models\GameRoomModel;
@@ -441,6 +442,158 @@ class GameEngine
             'selected_question' => $selectedQuestion,
             'pool_recycled' => $recycled,
         ];
+    }
+
+    public function raceQuestionAnswer(
+        string $roomUuid,
+        string $teamUuid,
+        int $optionId,
+        ?string $idempotencyKey = null
+    ): array {
+        $scope = null;
+        $roundQuestionId = null;
+        $teamId = null;
+        $response = null;
+
+        $this->db->transBegin();
+        try {
+            $room = $this->roomByUuid($roomUuid);
+            $this->assertRoomNotExpired($room, 'Room sudah kedaluwarsa. Permainan tidak bisa dilanjutkan.');
+            if ($room['status'] !== 'PLAYING') {
+                throw new DomainException('Game belum dalam status PLAYING.');
+            }
+            if (($room['game_mode'] ?? 'SNAKES_LADDERS') !== 'QUIZ_RACE'
+                || ($room['participation_mode'] ?? 'TEAM_DEVICE') !== 'TEAM_DEVICE') {
+                throw new DomainException('Jawaban siklus soal hanya tersedia untuk Quiz Race Device per Tim.');
+            }
+
+            $team = $this->teamByUuid($teamUuid, (int) $room['id']);
+            $teamId = (int) $team['id'];
+            $round = $this->activeRaceRound((int) $room['id']);
+            if ($round === null) {
+                throw new DomainException('Tidak ada ronde Quiz Race aktif.');
+            }
+            $question = $this->activeRaceQuestion((int) $round['id']);
+            if ($question === null) {
+                throw new DomainException('Tidak ada pertanyaan Quiz Race aktif untuk dijawab.');
+            }
+
+            $roundQuestionId = (int) $question['id'];
+            $scope = implode(':', [
+                'race-question-answer',
+                $room['public_uuid'],
+                $question['public_uuid'],
+                $team['public_uuid'],
+            ]);
+            if ($existing = $this->idempotentResponse($scope, $idempotencyKey)) {
+                $this->db->transCommit();
+
+                return $existing;
+            }
+
+            $option = (new QuestionOptionModel())
+                ->where('question_id', $question['question_id'])
+                ->where('id', $optionId)
+                ->first();
+            if ($option === null) {
+                throw new DomainException('Pilihan jawaban tidak valid.');
+            }
+
+            $answeredAtEpochMs = $this->currentEpochMs();
+            if ($answeredAtEpochMs >= (int) $question['deadline_epoch_ms']) {
+                throw new DomainException('Waktu menjawab pertanyaan Quiz Race sudah habis.');
+            }
+
+            $this->db->table('game_round_questions')
+                ->set('answer_count', 'answer_count + 1', false)
+                ->where('id', $roundQuestionId)
+                ->where('state', 'QUESTION_ACTIVE')
+                ->where('deadline_epoch_ms >', $answeredAtEpochMs)
+                ->update();
+            if ($this->db->affectedRows() !== 1) {
+                throw new DomainException('Pertanyaan Quiz Race sudah ditutup atau melewati deadline.');
+            }
+
+            $isCorrect = (int) $option['is_correct'] === 1;
+            (new GameRoundAnswerModel())->insert([
+                'public_uuid' => Uuid::v4(),
+                'round_question_id' => $roundQuestionId,
+                'team_id' => $teamId,
+                'question_id' => $question['question_id'],
+                'option_id' => $option['id'],
+                'answer_text' => $option['body'],
+                'is_correct' => $isCorrect ? 1 : 0,
+                'outcome' => $isCorrect ? 'CORRECT' : 'WRONG',
+                'answered_at' => date('Y-m-d H:i:s', intdiv($answeredAtEpochMs, 1000)),
+                'answered_at_epoch_ms' => $answeredAtEpochMs,
+                'response_ms' => max(0, $answeredAtEpochMs - (int) $question['started_at_epoch_ms']),
+            ]);
+
+            $this->bumpRoom((int) $room['id']);
+            $response = $this->snapshot($room['public_uuid']);
+            $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+            if (! $this->db->transStatus()) {
+                throw new DomainException('Jawaban Quiz Race gagal disimpan secara atomik.');
+            }
+            $this->db->transCommit();
+        } catch (\Throwable $error) {
+            $this->db->transRollback();
+            $this->db->resetTransStatus();
+            if ($scope !== null && ($existing = $this->idempotentResponse($scope, $idempotencyKey))) {
+                return $existing;
+            }
+            if ($roundQuestionId !== null && $teamId !== null
+                && (new GameRoundAnswerModel())
+                    ->where('round_question_id', $roundQuestionId)
+                    ->where('team_id', $teamId)
+                    ->first() !== null) {
+                throw new DomainException('Tim sudah menjawab pertanyaan Quiz Race ini.');
+            }
+
+            throw $error;
+        }
+
+        $room = $this->roomByUuid($roomUuid);
+        $question = (new GameRoundQuestionModel())->find($roundQuestionId);
+        if ((int) $question['answer_count'] >= count($this->teams((int) $room['id']))) {
+            $this->afterRaceQuestionAnswersComplete($room, $question);
+        }
+        $this->recordEvent($room, 'race.answer_submitted', [
+            'question_uuid' => $question['public_uuid'],
+            'team_uuid' => $teamUuid,
+            'answered' => true,
+        ]);
+
+        return $response;
+    }
+
+    private function activeRaceRound(int $roomId): ?array
+    {
+        return (new GameRoundModel())
+            ->where('room_id', $roomId)
+            ->where('state', 'ROUND_ACTIVE')
+            ->orderBy('round_number', 'DESC')
+            ->first();
+    }
+
+    private function activeRaceQuestion(int $roundId): ?array
+    {
+        return (new GameRoundQuestionModel())
+            ->where('round_id', $roundId)
+            ->where('state', 'QUESTION_ACTIVE')
+            ->orderBy('question_number', 'DESC')
+            ->first();
+    }
+
+    private function afterRaceQuestionAnswersComplete(array $room, array $question): void
+    {
+        // Task 6 will atomically claim and resolve the completed question here.
+    }
+
+    protected function currentEpochMs(): int
+    {
+        return (int) floor(microtime(true) * 1000);
     }
 
     public function pause(string $roomUuid): array
@@ -1418,9 +1571,54 @@ class GameEngine
             ],
             'teams' => $teams,
             'current_turn' => $turn ? $this->publicTurn($turn) : null,
+            'current_round' => $this->publicActiveRaceRound($room),
             'mode_state' => $this->publicModeState($room, $board, $turn, $teams),
             'leaderboard' => $this->leaderboard((int) $room['id']),
             'events' => $this->recentEvents((int) $room['id']),
+        ];
+    }
+
+    private function publicActiveRaceRound(array $room): ?array
+    {
+        if (($room['game_mode'] ?? 'SNAKES_LADDERS') !== 'QUIZ_RACE'
+            || ($room['participation_mode'] ?? 'TEAM_DEVICE') !== 'TEAM_DEVICE') {
+            return null;
+        }
+
+        $round = $this->activeRaceRound((int) $room['id']);
+        if ($round === null) {
+            return null;
+        }
+        $question = $this->activeRaceQuestion((int) $round['id']);
+        $publicQuestion = null;
+        if ($question !== null) {
+            $answeredTeamIds = array_fill_keys(array_map(
+                static fn (array $answer): int => (int) $answer['team_id'],
+                (new GameRoundAnswerModel())
+                    ->select('team_id')
+                    ->where('round_question_id', $question['id'])
+                    ->findAll()
+            ), true);
+            $publicQuestion = [
+                'uuid' => $question['public_uuid'],
+                'question_number' => (int) $question['question_number'],
+                'state' => $question['state'],
+                'question' => $this->publicQuestion((new QuestionModel())->find($question['question_id'])),
+                'deadline_epoch_ms' => (int) $question['deadline_epoch_ms'],
+                'answers' => array_map(static fn (array $team): array => [
+                    'team_uuid' => $team['public_uuid'],
+                    'answered' => isset($answeredTeamIds[(int) $team['id']]),
+                ], $this->teams((int) $room['id'])),
+            ];
+        }
+
+        return [
+            'uuid' => $round['public_uuid'],
+            'round_number' => (int) $round['round_number'],
+            'state' => $round['state'],
+            'question_target_count' => (int) $round['question_target_count'],
+            'question_resolved_count' => (int) $round['question_resolved_count'],
+            'current_question' => $publicQuestion,
         ];
     }
 
