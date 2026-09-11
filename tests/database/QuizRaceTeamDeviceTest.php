@@ -716,6 +716,182 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $this->assertSame(1, $this->db->table('game_events')->where('room_id', (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first()['id'])->where('type', 'race.question_resolved')->countAllResults());
     }
 
+    public function testAdvanceKeepsResolvedQuestionVisibleUntilRevealEnds(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+
+        $resolved = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertSame('QUESTION_RESOLVED', $resolved['state']);
+
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $stillResolved = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $this->assertSame('QUESTION_RESOLVED', $stillResolved['state']);
+        $this->assertSame(0, (new GameRoundQuestionModel())->where('round_id', $fixture['round']['id'])->where('question_number', 2)->countAllResults());
+    }
+
+    public function testAdvanceCreatesExactlyOneNextQuestionWhenRoundStillHasQuota(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $closed = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $nextQuestions = (new GameRoundQuestionModel())->where('round_id', $fixture['round']['id'])->where('question_number', 2)->findAll();
+
+        $this->assertSame('QUESTION_CLOSED', $closed['state']);
+        $this->assertCount(1, $nextQuestions);
+        $this->assertSame('QUESTION_ACTIVE', $nextQuestions[0]['state']);
+    }
+
+    public function testAdvanceCompletesRoundInsteadOfCreatingNextQuestionWhenQuotaMet(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        // Simulate this being the round's last allocated question (target already met after this resolve).
+        (new GameRoundModel())->update($fixture['round']['id'], ['question_target_count' => 1]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $round = (new GameRoundModel())->find($fixture['round']['id']);
+        $nextQuestionCount = (new GameRoundQuestionModel())->where('round_id', $fixture['round']['id'])->where('question_number', 2)->countAllResults();
+
+        $this->assertSame('ROUND_COMPLETED', $round['state']);
+        $this->assertSame(0, $nextQuestionCount);
+        $this->assertNotNull($round['round_winner_team_ids_json']);
+    }
+
+    public function testCompleteRaceRoundAwardsPrizeOnRoundScoreBeforePrizeWithExactCoWinnersAndNoMovement(): void
+    {
+        $fixture = $this->startAnswerRace(2, ['scoring' => ['time_bonus' => false, 'streak_bonus' => false]]);
+        (new GameRoundModel())->update($fixture['round']['id'], ['question_target_count' => 1]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $startedAtEpochMs = (int) $fixture['question']['started_at_epoch_ms'];
+        $engine = $this->engineAt([$startedAtEpochMs + 300, $startedAtEpochMs + 300, $startedAtEpochMs + 301]);
+
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+
+        $beforeA = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $beforeB = (new GameTeamModel())->find($fixture['teams'][1]['id']);
+
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $round = (new GameRoundModel())->find($fixture['round']['id']);
+        $afterA = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $afterB = (new GameTeamModel())->find($fixture['teams'][1]['id']);
+
+        $winnerIds = $round['round_winner_team_ids_json'];
+        sort($winnerIds);
+        $expectedWinnerIds = [(int) $fixture['teams'][0]['id'], (int) $fixture['teams'][1]['id']];
+        sort($expectedWinnerIds);
+
+        $this->assertSame($expectedWinnerIds, $winnerIds);
+        $this->assertSame($beforeA['score'] + 100, $afterA['score']);
+        $this->assertSame($beforeB['score'] + 100, $afterB['score']);
+        $this->assertSame($beforeA['position'], $afterA['position']);
+        $this->assertSame($beforeB['position'], $afterB['position']);
+        $this->assertSame(1, (new ScoreTransactionModel())
+            ->where('room_id', $fixture['stored_room']['id'])
+            ->where('team_id', $fixture['teams'][0]['id'])
+            ->where('type', 'RACE_ROUND_WINNER')
+            ->countAllResults());
+    }
+
+    public function testAdvanceClosesCheckpointAndStartsExactlyOneNextRoundAfterReveal(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        (new GameRoundModel())->update($fixture['round']['id'], ['question_target_count' => 1]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $round = (new GameRoundModel())->find($fixture['round']['id']);
+        $this->assertSame('ROUND_COMPLETED', $round['state']);
+
+        $this->forceRoundRevealElapsed($fixture['round']['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $closedRound = (new GameRoundModel())->find($fixture['round']['id']);
+        $nextRounds = (new GameRoundModel())->where('room_id', $fixture['stored_room']['id'])->where('round_number', 2)->findAll();
+
+        $this->assertSame('ROUND_CLOSED', $closedRound['state']);
+        $this->assertCount(1, $nextRounds);
+        $this->assertSame('ROUND_ACTIVE', $nextRounds[0]['state']);
+        $this->assertSame(15, $nextRounds[0]['question_target_count']);
+        $firstQuestionOfRound2 = (new GameRoundQuestionModel())->where('round_id', $nextRounds[0]['id'])->where('question_number', 1)->first();
+        $this->assertNotNull($firstQuestionOfRound2);
+        $this->assertSame('QUESTION_ACTIVE', $firstQuestionOfRound2['state']);
+    }
+
+    public function testAdvanceFinishesWithQuestionLimitRankingWhenAllocationExhaustedWithoutFinisher(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        (new GameTeamModel())->update($fixture['teams'][0]['id'], ['position' => 10, 'score' => 50]);
+        (new GameTeamModel())->update($fixture['teams'][1]['id'], ['position' => 15, 'score' => 20]);
+        // Simulate round 3 (last of the default [15,15,20] allocation) having just completed its checkpoint reveal.
+        (new GameRoundModel())->update($fixture['round']['id'], [
+            'round_number' => 3,
+            'question_target_count' => 1,
+            'question_resolved_count' => 1,
+            'state' => 'ROUND_COMPLETED',
+            'reveal_until_epoch_ms' => 0,
+        ]);
+
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
+        $this->assertSame('FINISHED', $storedRoom['status']);
+        $finishedEvent = $this->db->table('game_events')->where('room_id', $storedRoom['id'])->where('type', 'game.finished')->get()->getRowArray();
+        $payload = json_decode((string) $finishedEvent['payload_json'], true)['payload'];
+        $this->assertSame('QUESTION_LIMIT', $payload['finish_reason']);
+        $this->assertSame([$fixture['teams'][1]['public_uuid']], $payload['winner_team_uuids']);
+    }
+
+    public function testAdvanceDoesNotRunAfterRoomFinished(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        (new GameTeamModel())->update($fixture['teams'][0]['id'], ['position' => 23]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
+        $this->assertSame('FINISHED', $storedRoom['status']);
+
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $question = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $round = (new GameRoundModel())->find($fixture['round']['id']);
+        $this->assertSame('QUESTION_RESOLVED', $question['state']);
+        $this->assertSame('ROUND_INTERRUPTED', $round['state']);
+        $this->assertSame(0, (new GameRoundModel())->where('room_id', $storedRoom['id'])->where('round_number', 2)->countAllResults());
+    }
+
+    private function forceQuestionRevealElapsed(int $questionId): void
+    {
+        (new GameRoundQuestionModel())->update($questionId, ['reveal_until_epoch_ms' => 0]);
+    }
+
+    private function forceRoundRevealElapsed(int $roundId): void
+    {
+        (new GameRoundModel())->update($roundId, ['reveal_until_epoch_ms' => 0]);
+    }
+
     public function testRoundPersistenceWritesAndCastsAllFields(): void
     {
         $roomModel = new GameRoomModel();
