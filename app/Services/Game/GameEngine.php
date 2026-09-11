@@ -844,14 +844,8 @@ class GameEngine
         $round = $context['round'];
         $question = $context['question'];
 
-        $teamUuidsById = [];
-        foreach ($this->teams((int) $room['id']) as $team) {
-            $teamUuidsById[(int) $team['id']] = $team['public_uuid'];
-        }
-        $toUuids = static fn (array $ids): array => array_values(array_filter(array_map(
-            static fn ($id) => $teamUuidsById[(int) $id] ?? null,
-            $ids
-        )));
+        $teamUuidsById = $this->teamUuidsById((int) $room['id']);
+        $toUuids = fn (array $ids): array => $this->mapIdsToUuids($ids, $teamUuidsById);
 
         $this->recordEvent($room, 'race.question_resolved', [
             'round_uuid' => $round['public_uuid'],
@@ -2284,6 +2278,8 @@ class GameEngine
             'teams' => $teams,
             'current_turn' => $turn ? $this->publicTurn($turn) : null,
             'current_round' => $this->publicActiveRaceRound($room),
+            'last_resolved_question' => $this->publicLastResolvedRaceQuestion($room),
+            'last_completed_round' => $this->publicLastCompletedRaceRound($room),
             'mode_state' => $this->publicModeState($room, $board, $turn, $teams),
             'leaderboard' => $this->leaderboard((int) $room['id']),
             'events' => $this->recentEvents((int) $room['id']),
@@ -2292,8 +2288,7 @@ class GameEngine
 
     private function publicActiveRaceRound(array $room): ?array
     {
-        if (($room['game_mode'] ?? 'SNAKES_LADDERS') !== 'QUIZ_RACE'
-            || ($room['participation_mode'] ?? 'TEAM_DEVICE') !== 'TEAM_DEVICE') {
+        if (! $this->isTeamDeviceRace($room)) {
             return null;
         }
 
@@ -2301,28 +2296,14 @@ class GameEngine
         if ($round === null) {
             return null;
         }
-        $question = $this->activeRaceQuestion((int) $round['id']);
-        $publicQuestion = null;
-        if ($question !== null) {
-            $answeredTeamIds = array_fill_keys(array_map(
-                static fn (array $answer): int => (int) $answer['team_id'],
-                (new GameRoundAnswerModel())
-                    ->select('team_id')
-                    ->where('round_question_id', $question['id'])
-                    ->findAll()
-            ), true);
-            $publicQuestion = [
-                'uuid' => $question['public_uuid'],
-                'question_number' => (int) $question['question_number'],
-                'state' => $question['state'],
-                'question' => $this->publicQuestion((new QuestionModel())->find($question['question_id'])),
-                'deadline_epoch_ms' => (int) $question['deadline_epoch_ms'],
-                'answers' => array_map(static fn (array $team): array => [
-                    'team_uuid' => $team['public_uuid'],
-                    'answered' => isset($answeredTeamIds[(int) $team['id']]),
-                ], $this->teams((int) $room['id'])),
-            ];
-        }
+        $question = (new GameRoundQuestionModel())
+            ->where('round_id', $round['id'])
+            ->whereIn('state', ['QUESTION_ACTIVE', 'QUESTION_RESOLVING', 'QUESTION_RESOLVED'])
+            ->orderBy('question_number', 'DESC')
+            ->first();
+        $publicQuestion = $question !== null
+            ? $this->publicRaceQuestion($question, (int) $room['id'])
+            : null;
 
         return [
             'uuid' => $round['public_uuid'],
@@ -2332,6 +2313,130 @@ class GameEngine
             'question_resolved_count' => (int) $round['question_resolved_count'],
             'current_question' => $publicQuestion,
         ];
+    }
+
+    /**
+     * Shared shape for a race question cycle: the active-question view (question,
+     * deadline, answered-only flags) plus, once QUESTION_RESOLVED, the movement
+     * result. Never exposes option correctness, response time, or a partial
+     * result while the question is still active/resolving.
+     */
+    private function publicRaceQuestion(array $question, int $roomId): array
+    {
+        $answeredTeamIds = array_fill_keys(array_map(
+            static fn (array $answer): int => (int) $answer['team_id'],
+            (new GameRoundAnswerModel())
+                ->select('team_id')
+                ->where('round_question_id', $question['id'])
+                ->findAll()
+        ), true);
+
+        $public = [
+            'uuid' => $question['public_uuid'],
+            'question_number' => (int) $question['question_number'],
+            'state' => $question['state'],
+            'question' => $this->publicQuestion((new QuestionModel())->find($question['question_id'])),
+            'deadline_epoch_ms' => (int) $question['deadline_epoch_ms'],
+            'answers' => array_map(static fn (array $team): array => [
+                'team_uuid' => $team['public_uuid'],
+                'answered' => isset($answeredTeamIds[(int) $team['id']]),
+            ], $this->teams($roomId)),
+        ];
+
+        if ($question['state'] === 'QUESTION_RESOLVED' || $question['state'] === 'QUESTION_CLOSED') {
+            $teamUuidsById = $this->teamUuidsById($roomId);
+            $public['movement'] = $question['movement_summary_json'] ?? [];
+            $public['fastest_team_uuids'] = $this->mapIdsToUuids($question['fastest_team_ids_json'] ?? [], $teamUuidsById);
+            $public['finisher_team_uuids'] = $this->mapIdsToUuids($question['finisher_team_ids_json'] ?? [], $teamUuidsById);
+            $public['reveal_until_epoch_ms'] = $question['reveal_until_epoch_ms'] !== null ? (int) $question['reveal_until_epoch_ms'] : null;
+        }
+
+        return $public;
+    }
+
+    private function publicLastResolvedRaceQuestion(array $room): ?array
+    {
+        if (! $this->isTeamDeviceRace($room)) {
+            return null;
+        }
+
+        $question = (new GameRoundQuestionModel())
+            ->select('game_round_questions.*')
+            ->join('game_rounds', 'game_rounds.id = game_round_questions.round_id')
+            ->where('game_rounds.room_id', $room['id'])
+            ->whereIn('game_round_questions.state', ['QUESTION_RESOLVED', 'QUESTION_CLOSED'])
+            ->orderBy('game_round_questions.id', 'DESC')
+            ->first();
+        if ($question === null) {
+            return null;
+        }
+        $round = (new GameRoundModel())->find($question['round_id']);
+
+        return $this->publicRaceQuestion($question, (int) $room['id']) + [
+            'round_uuid' => $round['public_uuid'],
+            'round_number' => (int) $round['round_number'],
+        ];
+    }
+
+    private function publicLastCompletedRaceRound(array $room): ?array
+    {
+        if (! $this->isTeamDeviceRace($room)) {
+            return null;
+        }
+
+        $round = (new GameRoundModel())
+            ->where('room_id', $room['id'])
+            ->whereIn('state', ['ROUND_COMPLETED', 'ROUND_CLOSED'])
+            ->orderBy('round_number', 'DESC')
+            ->first();
+        if ($round === null) {
+            return null;
+        }
+
+        return [
+            'uuid' => $round['public_uuid'],
+            'round_number' => (int) $round['round_number'],
+            'state' => $round['state'],
+            'question_target_count' => (int) $round['question_target_count'],
+            'question_resolved_count' => (int) $round['question_resolved_count'],
+            'round_winner_team_uuids' => $this->mapIdsToUuids(
+                $round['round_winner_team_ids_json'] ?? [],
+                $this->teamUuidsById((int) $room['id'])
+            ),
+            'round_score_summary' => $round['round_score_summary_json'] ?? [],
+            'reveal_until_epoch_ms' => $round['reveal_until_epoch_ms'] !== null ? (int) $round['reveal_until_epoch_ms'] : null,
+        ];
+    }
+
+    private function isTeamDeviceRace(array $room): bool
+    {
+        return ($room['game_mode'] ?? 'SNAKES_LADDERS') === 'QUIZ_RACE'
+            && ($room['participation_mode'] ?? 'TEAM_DEVICE') === 'TEAM_DEVICE';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function teamUuidsById(int $roomId): array
+    {
+        $teamUuidsById = [];
+        foreach ($this->teams($roomId) as $team) {
+            $teamUuidsById[(int) $team['id']] = $team['public_uuid'];
+        }
+
+        return $teamUuidsById;
+    }
+
+    /**
+     * @param array<int, string> $teamUuidsById
+     * @return list<string>
+     */
+    private function mapIdsToUuids(array $ids, array $teamUuidsById): array
+    {
+        return array_values(array_filter(array_map(
+            static fn ($id) => $teamUuidsById[(int) $id] ?? null,
+            $ids
+        )));
     }
 
     public function isValidProjectorToken(array $room, ?string $projectorToken): bool

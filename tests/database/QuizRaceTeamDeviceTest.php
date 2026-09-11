@@ -882,6 +882,109 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $this->assertSame(0, (new GameRoundModel())->where('room_id', $storedRoom['id'])->where('round_number', 2)->countAllResults());
     }
 
+    public function testSnapshotResolvedQuestionExposesMovementForOwnAndAllTeams(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+
+        $snapshot = $fixture['engine']->snapshot($fixture['room']['uuid']);
+        $currentQuestion = $snapshot['current_round']['current_question'];
+
+        $this->assertSame('QUESTION_RESOLVED', $currentQuestion['state']);
+        $this->assertCount(2, $currentQuestion['movement']);
+        $movementTeamUuids = array_column($currentQuestion['movement'], 'team_uuid');
+        sort($movementTeamUuids);
+        $expected = [$fixture['teams'][0]['public_uuid'], $fixture['teams'][1]['public_uuid']];
+        sort($expected);
+        $this->assertSame($expected, $movementTeamUuids);
+        $this->assertNotNull($currentQuestion['reveal_until_epoch_ms']);
+    }
+
+    public function testSnapshotResolvingQuestionExposesNoPartialResult(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        (new GameRoundQuestionModel())->update($fixture['question']['id'], ['state' => 'QUESTION_RESOLVING']);
+
+        $snapshot = $fixture['engine']->snapshot($fixture['room']['uuid']);
+        $currentQuestion = $snapshot['current_round']['current_question'];
+
+        $this->assertSame('QUESTION_RESOLVING', $currentQuestion['state']);
+        $this->assertArrayNotHasKey('movement', $currentQuestion);
+        $this->assertArrayNotHasKey('fastest_team_uuids', $currentQuestion);
+        $this->assertArrayNotHasKey('finisher_team_uuids', $currentQuestion);
+        foreach ($currentQuestion['answers'] as $answer) {
+            $this->assertSame(['team_uuid', 'answered'], array_keys($answer));
+        }
+    }
+
+    public function testSnapshotLastResolvedQuestionSurvivesNextQuestionCreation(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+        $resolvedQuestionUuid = $fixture['question']['public_uuid'];
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $snapshot = $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $this->assertSame('QUESTION_ACTIVE', $snapshot['current_round']['current_question']['state']);
+        $this->assertSame(2, $snapshot['current_round']['current_question']['question_number']);
+        $this->assertNotNull($snapshot['last_resolved_question']);
+        $this->assertSame($resolvedQuestionUuid, $snapshot['last_resolved_question']['uuid']);
+        $this->assertSame('QUESTION_CLOSED', $snapshot['last_resolved_question']['state']);
+    }
+
+    public function testSnapshotLastCompletedRoundSurvivesNextRoundCreation(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        (new GameRoundModel())->update($fixture['round']['id'], ['question_target_count' => 1]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+        $completedRoundUuid = $fixture['round']['public_uuid'];
+
+        $this->forceRoundRevealElapsed($fixture['round']['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $snapshot = $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $this->assertSame(2, $snapshot['current_round']['round_number']);
+        $this->assertNotNull($snapshot['last_completed_round']);
+        $this->assertSame($completedRoundUuid, $snapshot['last_completed_round']['uuid']);
+        $this->assertSame('ROUND_CLOSED', $snapshot['last_completed_round']['state']);
+    }
+
+    public function testSnapshotFinishedRoomExposesFinishReasonAndWinnersAndKeepsExistingKeysIntact(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        (new GameTeamModel())->update($fixture['teams'][0]['id'], ['position' => 23]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+
+        $snapshot = $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $this->assertSame('FINISHED', $snapshot['room']['status']);
+        $finishEvent = null;
+        foreach ($snapshot['events'] as $event) {
+            if ($event['event'] === 'game.finished') {
+                $finishEvent = $event;
+            }
+        }
+        $this->assertNotNull($finishEvent);
+        $this->assertSame('TRACK_FINISH', $finishEvent['payload']['finish_reason']);
+        $this->assertSame([$fixture['teams'][0]['public_uuid']], $finishEvent['payload']['winner_team_uuids']);
+
+        $this->assertNull($snapshot['current_turn']);
+        $this->assertArrayHasKey('mode_state', $snapshot);
+        $this->assertArrayHasKey('teams', $snapshot);
+        $this->assertArrayHasKey('leaderboard', $snapshot);
+    }
+
     private function forceQuestionRevealElapsed(int $questionId): void
     {
         (new GameRoundQuestionModel())->update($questionId, ['reveal_until_epoch_ms' => 0]);
