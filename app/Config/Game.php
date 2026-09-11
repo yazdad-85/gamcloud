@@ -23,4 +23,6 @@ class Game extends BaseConfig
     public int $freeActiveRoomLimit = 3;
     public int $freeDailyRoomLimit = 10;
     public int $freeMonthlyRoomLimit = 80;
+    public int $raceQuestionRevealSeconds = 3;
+    public int $raceRoundRevealSeconds = 5;
 }

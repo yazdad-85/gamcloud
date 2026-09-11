@@ -33,6 +33,7 @@ class GameEngine
     private GameModeCatalog $modes;
     private RaceTrackService $race;
     private RaceRoundService $raceRounds;
+    private RaceQuestionService $raceQuestions;
 
     public function __construct(
         private readonly RealtimeService $realtime = new RealtimeService()
@@ -42,6 +43,7 @@ class GameEngine
         $this->modes = new GameModeCatalog();
         $this->race = new RaceTrackService();
         $this->raceRounds = new RaceRoundService();
+        $this->raceQuestions = new RaceQuestionService($this->race);
     }
 
     public function createRoom(int $teacherId, string $title, array $options = []): array
@@ -588,7 +590,361 @@ class GameEngine
 
     private function afterRaceQuestionAnswersComplete(array $room, array $question): void
     {
-        // Task 6 will atomically claim and resolve the completed question here.
+        try {
+            $this->resolveRaceQuestion($room['public_uuid']);
+        } catch (DomainException) {
+            // A concurrent resolver (polling or teacher force) already claimed this question.
+        }
+    }
+
+    public function resolveRaceQuestion(
+        string $roomUuid,
+        bool $force = false,
+        ?string $idempotencyKey = null
+    ): array {
+        $scope = null;
+        $response = null;
+        $eventContext = null;
+
+        $this->db->transBegin();
+        try {
+            $room = $this->roomByUuid($roomUuid);
+            $this->assertRoomNotExpired($room, 'Room sudah kedaluwarsa. Permainan tidak bisa dilanjutkan.');
+            if ($room['status'] !== 'PLAYING') {
+                throw new DomainException('Game belum dalam status PLAYING.');
+            }
+            if (($room['game_mode'] ?? 'SNAKES_LADDERS') !== 'QUIZ_RACE'
+                || ($room['participation_mode'] ?? 'TEAM_DEVICE') !== 'TEAM_DEVICE') {
+                throw new DomainException('Resolusi siklus soal hanya tersedia untuk Quiz Race Device per Tim.');
+            }
+
+            $round = $this->activeRaceRound((int) $room['id']);
+            if ($round === null) {
+                throw new DomainException('Tidak ada ronde Quiz Race aktif.');
+            }
+            $question = $this->activeRaceQuestion((int) $round['id']);
+            if ($question === null) {
+                throw new DomainException('Tidak ada pertanyaan Quiz Race aktif untuk diselesaikan.');
+            }
+
+            $roundQuestionId = (int) $question['id'];
+            $scope = implode(':', ['race-question-resolve', $room['public_uuid'], $question['public_uuid']]);
+            if ($existing = $this->idempotentResponse($scope, $idempotencyKey)) {
+                $this->db->transCommit();
+
+                return $existing;
+            }
+
+            $teams = $this->teams((int) $room['id']);
+            $answeredCount = (new GameRoundAnswerModel())->where('round_question_id', $roundQuestionId)->countAllResults();
+            $resolveEpochMs = $this->currentEpochMs();
+            $deadlinePassed = $resolveEpochMs >= (int) $question['deadline_epoch_ms'];
+            if (! $force && $answeredCount < count($teams) && ! $deadlinePassed) {
+                throw new DomainException('Belum semua tim menjawab dan waktu belum habis.');
+            }
+
+            $this->db->table('game_round_questions')
+                ->set('state', 'QUESTION_RESOLVING')
+                ->where('id', $roundQuestionId)
+                ->where('state', 'QUESTION_ACTIVE')
+                ->update();
+            if ($this->db->affectedRows() !== 1) {
+                throw new DomainException('Pertanyaan Quiz Race sudah diselesaikan atau tidak aktif lagi.');
+            }
+
+            $resolvedAt = date('Y-m-d H:i:s', intdiv($resolveEpochMs, 1000));
+            $answeredTeamIds = array_map(
+                static fn (array $answer): int => (int) $answer['team_id'],
+                (new GameRoundAnswerModel())->where('round_question_id', $roundQuestionId)->findAll()
+            );
+            foreach ($teams as $team) {
+                if (in_array((int) $team['id'], $answeredTeamIds, true)) {
+                    continue;
+                }
+                (new GameRoundAnswerModel())->insert([
+                    'public_uuid' => Uuid::v4(),
+                    'round_question_id' => $roundQuestionId,
+                    'team_id' => $team['id'],
+                    'question_id' => $question['question_id'],
+                    'outcome' => 'TIMEOUT',
+                    'is_correct' => 0,
+                    'answered_at' => $resolvedAt,
+                ]);
+            }
+
+            $answers = (new GameRoundAnswerModel())->where('round_question_id', $roundQuestionId)->findAll();
+            $answersByTeamId = [];
+            foreach ($answers as $answer) {
+                $answersByTeamId[(int) $answer['team_id']] = $answer;
+            }
+            $answerInput = array_map(static fn (array $answer): array => [
+                'team_id' => (int) $answer['team_id'],
+                'outcome' => $answer['outcome'],
+                'is_correct' => (bool) $answer['is_correct'],
+                'response_ms' => $answer['response_ms'] !== null ? (int) $answer['response_ms'] : null,
+            ], $answers);
+
+            $board = (new BoardTemplateModel())->find($room['board_template_id']);
+            $resolution = $this->raceQuestions->resolveMovements($teams, $answerInput, $room, $board);
+
+            $rules = $this->scoringRules($room['scoring_json'] ?? []);
+            $teamsById = [];
+            foreach ($teams as $team) {
+                $teamsById[(int) $team['id']] = $team;
+            }
+
+            $movementSummary = [];
+            foreach ($resolution['movements'] as $movement) {
+                $teamId = (int) $movement['team_id'];
+                $team = $teamsById[$teamId];
+                $isCorrect = $movement['outcome'] === 'CORRECT';
+                $newStreak = $isCorrect ? ((int) ($team['streak_count'] ?? 0) + 1) : 0;
+
+                $basePoints = $this->raceAnswerBasePoints($movement['outcome'], $rules);
+                $timeBonus = ($isCorrect && $rules['time_bonus'])
+                    ? $this->raceTimeBonus($movement['response_ms'], $question)
+                    : 0;
+                $streakBonus = ($isCorrect && $rules['streak_bonus'])
+                    ? $this->streakBonus($newStreak)
+                    : 0;
+                $specialPoints = (int) ($movement['score_delta'] ?? 0);
+                $totalDelta = $basePoints + $timeBonus + $streakBonus + $specialPoints;
+                $breakdown = [
+                    'answer' => $basePoints,
+                    'time_bonus' => $timeBonus,
+                    'streak_bonus' => $streakBonus,
+                    'near_finish_bonus' => 0,
+                ];
+
+                (new GameTeamModel())->update($teamId, [
+                    'position' => $movement['to'],
+                    'score' => (int) $team['score'] + $totalDelta,
+                    'streak_count' => $newStreak,
+                    'active_effects_json' => json_encode($movement['active_effects'], JSON_UNESCAPED_SLASHES),
+                ]);
+
+                (new GameRoundAnswerModel())->update($answersByTeamId[$teamId]['id'], [
+                    'score_delta' => $totalDelta,
+                    'score_breakdown_json' => $breakdown,
+                ]);
+
+                if ($basePoints !== 0) {
+                    $type = $isCorrect ? 'ANSWER_CORRECT' : ($movement['outcome'] === 'TIMEOUT' ? 'ANSWER_TIMEOUT' : 'ANSWER_WRONG');
+                    $reason = $isCorrect ? 'Jawaban benar Quiz Race' : ($movement['outcome'] === 'TIMEOUT' ? 'Penalti timeout Quiz Race' : 'Penalti jawaban salah Quiz Race');
+                    $this->recordScore($room, $team, $type, $basePoints, $reason);
+                }
+                if ($timeBonus !== 0) {
+                    $this->recordScore($room, $team, 'TIME_BONUS', $timeBonus, 'Bonus jawab cepat Quiz Race');
+                }
+                if ($streakBonus !== 0) {
+                    $this->recordScore($room, $team, 'STREAK_BONUS', $streakBonus, 'Bonus streak Quiz Race');
+                }
+
+                $movementSummary[(string) $teamId] = [
+                    'team_uuid' => $team['public_uuid'],
+                    'from' => $movement['from'],
+                    'landed' => $movement['landed'],
+                    'to' => $movement['to'],
+                    'special' => $movement['special'],
+                    'effects' => $movement['effects'],
+                    'outcome' => $movement['outcome'],
+                    'response_ms' => $movement['response_ms'],
+                    'steps' => $movement['steps'],
+                    'score_delta' => $totalDelta,
+                    'score_breakdown' => $breakdown,
+                ];
+            }
+
+            (new GameRoundModel())->update($round['id'], [
+                'question_resolved_count' => (int) $round['question_resolved_count'] + 1,
+            ]);
+
+            $fastestTeamIds = $resolution['fastest_team_ids'];
+            $finisherTeamIds = $resolution['finisher_team_ids'];
+            $finished = $finisherTeamIds !== [];
+            $revealEpochMs = $resolveEpochMs + ($this->config->raceQuestionRevealSeconds * 1000);
+
+            (new GameRoundQuestionModel())->update($roundQuestionId, [
+                'state' => 'QUESTION_RESOLVED',
+                'resolved_at' => $resolvedAt,
+                'reveal_until' => date('Y-m-d H:i:s', intdiv($revealEpochMs, 1000)),
+                'reveal_until_epoch_ms' => $revealEpochMs,
+                'fastest_team_ids_json' => $fastestTeamIds,
+                'finisher_team_ids_json' => $finisherTeamIds,
+                'movement_summary_json' => $movementSummary,
+            ]);
+
+            $winnerTeamIds = [];
+            if ($finished) {
+                $aggregateStats = $this->raceTeamAggregateStats((int) $room['id']);
+                $updatedTeamsById = [];
+                foreach ((new GameTeamModel())->whereIn('id', $finisherTeamIds)->findAll() as $updatedTeam) {
+                    $updatedTeamsById[(int) $updatedTeam['id']] = $updatedTeam;
+                }
+                $finisherStats = array_map(static function (int $teamId) use ($updatedTeamsById, $aggregateStats): array {
+                    $stats = $aggregateStats[$teamId] ?? ['correct_count' => 0, 'correct_response_ms' => 0];
+
+                    return [
+                        'team_id' => $teamId,
+                        'score' => (int) ($updatedTeamsById[$teamId]['score'] ?? 0),
+                        'correct_count' => $stats['correct_count'],
+                        'correct_response_ms' => $stats['correct_response_ms'],
+                    ];
+                }, $finisherTeamIds);
+                $winnerTeamIds = $this->raceQuestions->rankFinishers($finisherStats)['winner_team_ids'];
+
+                (new GameRoomModel())->update($room['id'], [
+                    'status' => 'FINISHED',
+                    'finished_at' => $resolvedAt,
+                ]);
+                (new GameRoundModel())->update($round['id'], [
+                    'state' => 'ROUND_INTERRUPTED',
+                    'completed_at' => $resolvedAt,
+                ]);
+            }
+
+            $this->bumpRoom((int) $room['id']);
+            $room = $this->roomById((int) $room['id']);
+            $response = $this->snapshot($room['public_uuid']);
+            $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+
+            $eventContext = [
+                'room' => $room,
+                'round' => $round,
+                'question' => (new GameRoundQuestionModel())->find($roundQuestionId),
+                'movement_summary' => $movementSummary,
+                'fastest_team_ids' => $fastestTeamIds,
+                'finisher_team_ids' => $finisherTeamIds,
+                'finished' => $finished,
+                'winner_team_ids' => $winnerTeamIds,
+            ];
+
+            if (! $this->db->transStatus()) {
+                throw new DomainException('Resolusi Quiz Race gagal disimpan secara atomik.');
+            }
+            $this->db->transCommit();
+        } catch (\Throwable $error) {
+            $this->db->transRollback();
+            $this->db->resetTransStatus();
+            if ($scope !== null && ($existing = $this->idempotentResponse($scope, $idempotencyKey))) {
+                return $existing;
+            }
+
+            throw $error;
+        }
+
+        $this->publishRaceQuestionResolvedEvents($eventContext);
+
+        return $response;
+    }
+
+    private function publishRaceQuestionResolvedEvents(array $context): void
+    {
+        $room = $context['room'];
+        $round = $context['round'];
+        $question = $context['question'];
+
+        $teamUuidsById = [];
+        foreach ($this->teams((int) $room['id']) as $team) {
+            $teamUuidsById[(int) $team['id']] = $team['public_uuid'];
+        }
+        $toUuids = static fn (array $ids): array => array_values(array_filter(array_map(
+            static fn ($id) => $teamUuidsById[(int) $id] ?? null,
+            $ids
+        )));
+
+        $this->recordEvent($room, 'race.question_resolved', [
+            'round_uuid' => $round['public_uuid'],
+            'round_number' => (int) $round['round_number'],
+            'question_uuid' => $question['public_uuid'],
+            'question_number' => (int) $question['question_number'],
+            'movement' => $context['movement_summary'],
+            'fastest_team_uuids' => $toUuids($context['fastest_team_ids']),
+            'finisher_team_uuids' => $toUuids($context['finisher_team_ids']),
+            'reveal_until_epoch_ms' => (int) $question['reveal_until_epoch_ms'],
+        ]);
+
+        foreach ($context['movement_summary'] as $summary) {
+            foreach ($summary['effects'] as $effect) {
+                $this->recordEvent($room, 'tile.special_triggered', [
+                    'team_uuid' => $summary['team_uuid'],
+                    'effect' => $effect,
+                    'movement' => [
+                        'from' => $summary['from'],
+                        'landed' => $summary['landed'],
+                        'to' => $summary['to'],
+                    ],
+                ]);
+            }
+        }
+
+        if ($context['finished']) {
+            $winnerUuids = $toUuids($context['winner_team_ids']);
+            $this->recordEvent($room, 'race.round_interrupted', [
+                'round_uuid' => $round['public_uuid'],
+                'round_number' => (int) $round['round_number'],
+                'reason' => 'TRACK_FINISH',
+            ]);
+            $this->recordEvent($room, 'game.finished', [
+                'finish_reason' => 'TRACK_FINISH',
+                'winner_team_uuids' => $winnerUuids,
+                'winner_team_uuid' => $winnerUuids[0] ?? null,
+            ]);
+        }
+    }
+
+    private function raceAnswerBasePoints(string $outcome, array $rules): int
+    {
+        if ($outcome === 'CORRECT') {
+            return $this->config->correctAnswerPoints;
+        }
+        if ($outcome === 'TIMEOUT') {
+            return $rules['timeout_penalty'] ? $this->config->timeoutPenaltyPoints : $this->config->wrongAnswerPoints;
+        }
+
+        return $rules['wrong_penalty'] ? $this->config->wrongPenaltyPoints : $this->config->wrongAnswerPoints;
+    }
+
+    private function raceTimeBonus(?int $responseMs, array $question): int
+    {
+        if ($responseMs === null) {
+            return 0;
+        }
+
+        $total = (int) $question['deadline_epoch_ms'] - (int) $question['started_at_epoch_ms'];
+        if ($total <= 0) {
+            return 0;
+        }
+
+        $remaining = max(0, $total - $responseMs);
+
+        return min($this->config->maxTimeBonusPoints, max(0, (int) floor(($remaining / $total) * $this->config->maxTimeBonusPoints)));
+    }
+
+    /**
+     * @return array<int, array{correct_count:int, correct_response_ms:int}>
+     */
+    private function raceTeamAggregateStats(int $roomId): array
+    {
+        $rows = $this->db->table('game_round_answers')
+            ->select('game_round_answers.team_id, game_round_answers.is_correct, game_round_answers.response_ms')
+            ->join('game_round_questions', 'game_round_questions.id = game_round_answers.round_question_id')
+            ->join('game_rounds', 'game_rounds.id = game_round_questions.round_id')
+            ->where('game_rounds.room_id', $roomId)
+            ->get()
+            ->getResultArray();
+
+        $stats = [];
+        foreach ($rows as $row) {
+            $teamId = (int) $row['team_id'];
+            $stats[$teamId] ??= ['correct_count' => 0, 'correct_response_ms' => 0];
+            if ((int) $row['is_correct'] === 1) {
+                $stats[$teamId]['correct_count']++;
+                $stats[$teamId]['correct_response_ms'] += (int) ($row['response_ms'] ?? 0);
+            }
+        }
+
+        return $stats;
     }
 
     protected function currentEpochMs(): int

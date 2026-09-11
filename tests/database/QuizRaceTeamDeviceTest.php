@@ -9,6 +9,7 @@ use App\Models\GameTurnModel;
 use App\Models\QuestionModel;
 use App\Models\QuestionOptionModel;
 use App\Models\QuestionTopicModel;
+use App\Models\ScoreTransactionModel;
 use App\Services\Game\GameEngine;
 use App\Services\Game\Uuid;
 use CodeIgniter\Database\Exceptions\DatabaseException;
@@ -431,7 +432,7 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $option = $this->optionForQuestion($fixture['question']);
         $startedAtEpochMs = 2000000000000;
         $this->setQuestionWindow($fixture['question']['id'], $startedAtEpochMs, $startedAtEpochMs + 30000);
-        $engine = $this->engineAt([$startedAtEpochMs + 50, $startedAtEpochMs + 125]);
+        $engine = $this->engineAt([$startedAtEpochMs + 50, $startedAtEpochMs + 125, $startedAtEpochMs + 200]);
 
         foreach ($fixture['teams'] as $team) {
             $engine->raceQuestionAnswer(
@@ -449,7 +450,7 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $this->assertSame(75, $answers[1]['answered_at_epoch_ms'] - $answers[0]['answered_at_epoch_ms']);
         $question = (new GameRoundQuestionModel())->find($fixture['question']['id']);
         $this->assertSame(2, $question['answer_count']);
-        $this->assertSame('QUESTION_ACTIVE', $question['state']);
+        $this->assertSame('QUESTION_RESOLVED', $question['state']);
     }
 
     public function testRaceQuestionAnswerActiveSnapshotDoesNotLeakAnswerDetails(): void
@@ -477,7 +478,7 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
 
     public function testRaceQuestionAnswerAndResolverClaimHaveAllOrNothingOrderingOnSqlite(): void
     {
-        $fixture = $this->startAnswerRace(1);
+        $fixture = $this->startAnswerRace(2);
         $option = $this->optionForQuestion($fixture['question']);
         (new GameRoundQuestionModel())->update($fixture['question']['id'], ['state' => 'QUESTION_RESOLVING']);
 
@@ -511,6 +512,208 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
             ->where('round_question_id', $fixture['question']['id'])
             ->countAllResults());
         $this->assertSame(1, (new GameRoundQuestionModel())->find($fixture['question']['id'])['answer_count']);
+    }
+
+    public function testResolveRaceQuestionMovesFastestCorrectThreeStepsAndPlainCorrectOneStep(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        // Start both teams away from tile 4 (Boost) so plain movement math is isolated from tile effects.
+        (new GameTeamModel())->update($fixture['teams'][0]['id'], ['position' => 2]);
+        (new GameTeamModel())->update($fixture['teams'][1]['id'], ['position' => 2]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $startedAtEpochMs = (int) $fixture['question']['started_at_epoch_ms'];
+        $engine = $this->engineAt([$startedAtEpochMs + 50, $startedAtEpochMs + 500, $startedAtEpochMs + 501]);
+
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+
+        $teamA = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $teamB = (new GameTeamModel())->find($fixture['teams'][1]['id']);
+
+        $this->assertSame(5, $teamA['position']);
+        $this->assertSame(3, $teamB['position']);
+    }
+
+    public function testResolveRaceQuestionKeepsWrongAndTimeoutTeamsInPlaceWithNoScore(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $wrong = $this->wrongOptionForQuestion($fixture['question']);
+        $beforeA = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $beforeB = (new GameTeamModel())->find($fixture['teams'][1]['id']);
+
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $wrong['id']);
+        $fixture['engine']->resolveRaceQuestion($fixture['room']['uuid'], true);
+
+        $afterA = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $afterB = (new GameTeamModel())->find($fixture['teams'][1]['id']);
+        $answers = (new GameRoundAnswerModel())->where('round_question_id', $fixture['question']['id'])->findAll();
+
+        $this->assertSame($beforeA['position'], $afterA['position']);
+        $this->assertSame($beforeA['score'], $afterA['score']);
+        $this->assertSame($beforeB['position'], $afterB['position']);
+        $this->assertSame($beforeB['score'], $afterB['score']);
+        $this->assertCount(2, $answers);
+        $outcomesByTeam = array_combine(array_column($answers, 'team_id'), array_column($answers, 'outcome'));
+        $this->assertSame('WRONG', $outcomesByTeam[$fixture['teams'][0]['id']]);
+        $this->assertSame('TIMEOUT', $outcomesByTeam[$fixture['teams'][1]['id']]);
+    }
+
+    public function testResolveRaceQuestionRejectsWithoutForceBeforeAllAnsweredOrDeadline(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+
+        $this->assertDomainFailure(
+            fn () => $fixture['engine']->resolveRaceQuestion($fixture['room']['uuid']),
+            'Belum semua tim menjawab'
+        );
+        $this->assertSame('QUESTION_ACTIVE', (new GameRoundQuestionModel())->find($fixture['question']['id'])['state']);
+    }
+
+    public function testResolveRaceQuestionTimeBonusUsesPersistedResponseMsNotWallClock(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $startedAtEpochMs = (int) $fixture['question']['started_at_epoch_ms'];
+        $deadlineEpochMs = (int) $fixture['question']['deadline_epoch_ms'];
+        $this->setQuestionWindow($fixture['question']['id'], $startedAtEpochMs, $deadlineEpochMs);
+
+        $engine = $this->engineAt([$startedAtEpochMs + 100, $deadlineEpochMs - 1, $deadlineEpochMs + 5000]);
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+
+        $answers = (new GameRoundAnswerModel())->where('round_question_id', $fixture['question']['id'])->findAll();
+        $byTeam = [];
+        foreach ($answers as $answer) {
+            $byTeam[$answer['team_id']] = $answer;
+        }
+        $fastAnswer = $byTeam[$fixture['teams'][0]['id']];
+        $slowAnswer = $byTeam[$fixture['teams'][1]['id']];
+
+        $this->assertGreaterThan($slowAnswer['score_breakdown_json']['time_bonus'], $fastAnswer['score_breakdown_json']['time_bonus']);
+        $this->assertSame(0, $slowAnswer['score_breakdown_json']['time_bonus']);
+    }
+
+    public function testResolveRaceQuestionAppliesBoostAfterLandedPositionWithoutAddingScore(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $startedAtEpochMs = (int) $fixture['question']['started_at_epoch_ms'];
+        $engine = $this->engineAt([$startedAtEpochMs + 50, $startedAtEpochMs + 500, $startedAtEpochMs + 501]);
+
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+
+        $teamA = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $teamB = (new GameTeamModel())->find($fixture['teams'][1]['id']);
+        $answers = (new GameRoundAnswerModel())->where('round_question_id', $fixture['question']['id'])->findAll();
+        $byTeam = [];
+        foreach ($answers as $answer) {
+            $byTeam[$answer['team_id']] = $answer;
+        }
+
+        // Team A is fastest+correct from position 1: base(+1) + fastest(+2) lands on tile 4 (Boost, +2).
+        $this->assertSame(6, $teamA['position']);
+        // Team B is correct-but-slower from position 1: base(+1) only, no tile.
+        $this->assertSame(2, $teamB['position']);
+
+        $boostedAnswer = $byTeam[$fixture['teams'][0]['id']];
+        $breakdown = $boostedAnswer['score_breakdown_json'];
+        $this->assertSame(
+            $breakdown['answer'] + $breakdown['time_bonus'] + $breakdown['streak_bonus'],
+            $boostedAnswer['score_delta'],
+            'Boost tidak boleh menambah skor di luar jawaban/time/streak bonus.'
+        );
+    }
+
+    public function testResolveRaceQuestionOilSpillLocksFastestBonusForNextQuestionOnly(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        // Single team is trivially "fastest": base(+1) + fastest(+2) = 3 steps, landing exactly on tile 8 (Oil Spill).
+        (new GameTeamModel())->update($fixture['teams'][0]['id'], ['position' => 5]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+
+        $team = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $effects = json_decode((string) $team['active_effects_json'], true);
+        $this->assertSame(8, $team['position']);
+        $this->assertTrue($effects['oil_spill_lock']);
+    }
+
+    public function testResolveRaceQuestionFinishesRoomImmediatelyAndInterruptsRoundEvenOnLastAllocatedQuestion(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        // Simulate this being the round's last allocated question.
+        (new GameRoundModel())->update($fixture['round']['id'], ['question_target_count' => 1]);
+        (new GameTeamModel())->update($fixture['teams'][0]['id'], ['position' => 23]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
+        $round = (new GameRoundModel())->find($fixture['round']['id']);
+        $question = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+        $nextQuestionCount = (new GameRoundQuestionModel())->where('round_id', $fixture['round']['id'])->where('question_number', 2)->countAllResults();
+
+        $this->assertSame('FINISHED', $storedRoom['status']);
+        $this->assertSame('ROUND_INTERRUPTED', $round['state']);
+        $this->assertNull($round['round_winner_team_ids_json']);
+        $this->assertSame('QUESTION_RESOLVED', $question['state']);
+        $this->assertSame([$fixture['teams'][0]['id']], $question['finisher_team_ids_json']);
+        $this->assertSame(0, $nextQuestionCount);
+        $this->assertSame(0, (new ScoreTransactionModel())->where('room_id', $storedRoom['id'])->where('type', 'RACE_ROUND_WINNER')->countAllResults());
+
+        $finishedEvent = $this->db->table('game_events')->where('room_id', $storedRoom['id'])->where('type', 'game.finished')->get()->getRowArray();
+        $payload = json_decode((string) $finishedEvent['payload_json'], true)['payload'];
+        $this->assertSame('TRACK_FINISH', $payload['finish_reason']);
+        $this->assertSame([$fixture['teams'][0]['public_uuid']], $payload['winner_team_uuids']);
+        $this->assertSame($fixture['teams'][0]['public_uuid'], $payload['winner_team_uuid']);
+        $this->assertSame(1, $this->db->table('game_events')->where('room_id', $storedRoom['id'])->where('type', 'race.round_interrupted')->countAllResults());
+    }
+
+    public function testResolveRaceQuestionSimultaneousFinishExactTieProducesCoWinners(): void
+    {
+        $fixture = $this->startAnswerRace(2, ['track_length' => 24, 'scoring' => ['time_bonus' => false, 'streak_bonus' => false]]);
+        (new GameTeamModel())->update($fixture['teams'][0]['id'], ['position' => 21]);
+        (new GameTeamModel())->update($fixture['teams'][1]['id'], ['position' => 21]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $startedAtEpochMs = (int) $fixture['question']['started_at_epoch_ms'];
+        $engine = $this->engineAt([$startedAtEpochMs + 200, $startedAtEpochMs + 200, $startedAtEpochMs + 201]);
+
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $engine->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][1]['public_uuid'], (int) $correct['id']);
+
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
+        $this->assertSame('FINISHED', $storedRoom['status']);
+        $finishedEvent = $this->db->table('game_events')->where('room_id', $storedRoom['id'])->where('type', 'game.finished')->get()->getRowArray();
+        $payload = json_decode((string) $finishedEvent['payload_json'], true)['payload'];
+        $winnerUuids = $payload['winner_team_uuids'];
+        sort($winnerUuids);
+        $expected = [$fixture['teams'][0]['public_uuid'], $fixture['teams'][1]['public_uuid']];
+        sort($expected);
+        $this->assertSame($expected, $winnerUuids);
+    }
+
+    public function testResolveRaceQuestionClaimIsAtomicAndSecondCallIsRejected(): void
+    {
+        $fixture = $this->startAnswerRace(1);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+
+        $team = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $this->assertSame(6, $team['position']);
+
+        $this->assertDomainFailure(
+            fn () => $fixture['engine']->resolveRaceQuestion($fixture['room']['uuid'], true),
+            'Tidak ada pertanyaan'
+        );
+
+        $teamAfter = (new GameTeamModel())->find($fixture['teams'][0]['id']);
+        $this->assertSame($team['position'], $teamAfter['position']);
+        $this->assertSame($team['score'], $teamAfter['score']);
+        $this->assertSame(1, $this->db->table('game_events')->where('room_id', (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first()['id'])->where('type', 'race.question_resolved')->countAllResults());
     }
 
     public function testRoundPersistenceWritesAndCastsAllFields(): void
@@ -752,13 +955,13 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
     }
 
     /** @return array<string, mixed> */
-    private function startAnswerRace(int $teamCount): array
+    private function startAnswerRace(int $teamCount, array $roomOptions = []): array
     {
         $engine = new GameEngine();
         $room = $engine->createRoom(1, 'Quiz Race Answer Test ' . Uuid::v4(), [
             'game_mode' => 'QUIZ_RACE',
             'participation_mode' => 'TEAM_DEVICE',
-        ])['room'];
+        ] + $roomOptions)['room'];
         $teams = [];
         for ($index = 1; $index <= $teamCount; $index++) {
             $teams[] = $engine->joinByPin($room['pin'], 'Tim Jawab ' . $index)['team'];
@@ -778,6 +981,22 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         return (new QuestionOptionModel())
             ->where('question_id', $question['question_id'])
             ->orderBy('id', 'ASC')
+            ->first();
+    }
+
+    private function correctOptionForQuestion(array $question): array
+    {
+        return (new QuestionOptionModel())
+            ->where('question_id', $question['question_id'])
+            ->where('is_correct', 1)
+            ->first();
+    }
+
+    private function wrongOptionForQuestion(array $question): array
+    {
+        return (new QuestionOptionModel())
+            ->where('question_id', $question['question_id'])
+            ->where('is_correct', 0)
             ->first();
     }
 
