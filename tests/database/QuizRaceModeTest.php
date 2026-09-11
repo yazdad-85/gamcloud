@@ -67,16 +67,119 @@ final class QuizRaceModeTest extends CIUnitTestCase
         $this->assertSame('Quiz Race 10/09 23:27', $snapshot['room']['display_title']);
     }
 
-    public function testCreateRoomRejectsQuizRaceWithTeamDeviceParticipation(): void
+    public function testCreateRoomWithQuizRaceTeamDevicePersistsDefaultRoundConfiguration(): void
     {
         $engine = new GameEngine();
-
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessage('Tanpa Device');
-        $engine->createRoom(1, 'Quiz Race Reject Test', [
+        $snapshot = $engine->createRoom(1, 'Quiz Race Team Device Test', [
             'game_mode' => 'QUIZ_RACE',
             'participation_mode' => 'TEAM_DEVICE',
+            'track_length' => 18,
+            'lap_count' => 9,
+            'race_question_limit' => 999,
         ]);
+
+        $storedRoom = (new App\Models\GameRoomModel())->where('public_uuid', $snapshot['room']['uuid'])->first();
+
+        $this->assertSame('TEAM_DEVICE', $snapshot['room']['participation_mode']);
+        $this->assertSame(18, $snapshot['room']['max_position']);
+        $this->assertSame(3, $snapshot['room']['lap_count']);
+        $this->assertSame('clamp_finish', $snapshot['room']['finish_rule']);
+        $this->assertSame([], $snapshot['board']['ladders']);
+        $this->assertSame([], $snapshot['board']['snakes']);
+        $this->assertSame(['race_question_answer'], $snapshot['mode_state']['actions']);
+        $this->assertSame('multi_question_round', $snapshot['mode_state']['round_model']);
+        $this->assertSame(50, $storedRoom['race_question_limit']);
+        $this->assertSame([15, 15, 20], $storedRoom['race_round_question_counts_json']);
+        $this->assertSame(100, $storedRoom['race_round_winner_bonus_points']);
+    }
+
+    public function testCreateRoomWithQuizRaceTeamDevicePersistsCustomRoundConfiguration(): void
+    {
+        $snapshot = (new GameEngine())->createRoom(1, 'Quiz Race Custom Rounds', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+            'race_round_question_counts' => [6, '7', 8, 9],
+            'race_round_winner_bonus_points' => 250,
+        ]);
+        $storedRoom = (new App\Models\GameRoomModel())->where('public_uuid', $snapshot['room']['uuid'])->first();
+
+        $this->assertSame(4, $snapshot['room']['lap_count']);
+        $this->assertSame(30, $storedRoom['race_question_limit']);
+        $this->assertSame([6, 7, 8, 9], $storedRoom['race_round_question_counts_json']);
+        $this->assertSame(250, $storedRoom['race_round_winner_bonus_points']);
+    }
+
+    /**
+     * @dataProvider invalidTeamDeviceRoundAllocationProvider
+     */
+    public function testCreateRoomRejectsInvalidQuizRaceTeamDeviceRoundAllocation(mixed $allocation): void
+    {
+        $this->expectException(DomainException::class);
+
+        (new GameEngine())->createRoom(1, 'Quiz Race Invalid Rounds', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+            'race_round_question_counts' => $allocation,
+        ]);
+    }
+
+    public static function invalidTeamDeviceRoundAllocationProvider(): array
+    {
+        return [
+            'not a list' => [['round_1' => 15]],
+            'zero questions' => [[15, 0, 20]],
+            'too many rounds' => [[1, 1, 1, 1, 1, 1]],
+            'total below minimum' => [[1]],
+            'total above maximum' => [[50, 51]],
+            'invalid JSON' => ['not-json'],
+        ];
+    }
+
+    public function testQuizRaceTeamDeviceAllowsPinJoinAndRejectsOwnerRosterAddition(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Quiz Race Join Test', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+        ])['room'];
+
+        $joined = $engine->joinByPin($room['pin'], 'Tim Device');
+
+        $this->assertSame('Tim Device', $joined['team']['name']);
+        $this->assertSame($room['uuid'], $joined['room']['public_uuid']);
+
+        $this->actingAsTeacherOwner(1);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('join PIN');
+        (new GameEngine())->addTeamByOwner($room['uuid'], 'Tim Owner');
+    }
+
+    public function testCentralizedQuizRaceIgnoresTeamDeviceRoundAllocationAndKeepsPhaseElevenState(): void
+    {
+        $snapshot = (new GameEngine())->createRoom(1, 'Quiz Race Centralized Regression', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEACHER_CENTRALIZED',
+            'lap_count' => 7,
+            'race_round_question_counts' => [0],
+            'race_round_winner_bonus_points' => 999,
+        ]);
+        $storedRoom = (new App\Models\GameRoomModel())->where('public_uuid', $snapshot['room']['uuid'])->first();
+
+        $this->assertSame(7, $snapshot['room']['lap_count']);
+        $this->assertSame(['select_tier', 'answer'], $snapshot['mode_state']['actions']);
+        $this->assertArrayNotHasKey('round_model', $snapshot['mode_state']);
+        $this->assertNull($storedRoom['race_question_limit']);
+        $this->assertNull($storedRoom['race_round_question_counts_json']);
+        $this->assertNull($storedRoom['race_round_winner_bonus_points']);
+
+        $legacyState = (new GameModeCatalog())->resolve('QUIZ_RACE')->publicState(
+            ['max_position' => 24, 'lap_count' => 5],
+            ['tile_count' => 24],
+            null,
+            []
+        );
+        $this->assertSame(['select_tier', 'answer'], $legacyState['actions']);
+        $this->assertArrayNotHasKey('round_model', $legacyState);
     }
 
     public function testSelectDifficultyTierRecordsChosenTierAndDrawsQuestion(): void

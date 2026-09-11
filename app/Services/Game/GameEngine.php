@@ -29,6 +29,7 @@ class GameEngine
     private GameConfig $config;
     private GameModeCatalog $modes;
     private RaceTrackService $race;
+    private RaceRoundService $raceRounds;
 
     public function __construct(
         private readonly RealtimeService $realtime = new RealtimeService()
@@ -37,6 +38,7 @@ class GameEngine
         $this->config = config(GameConfig::class);
         $this->modes = new GameModeCatalog();
         $this->race = new RaceTrackService();
+        $this->raceRounds = new RaceRoundService();
     }
 
     public function createRoom(int $teacherId, string $title, array $options = []): array
@@ -52,10 +54,6 @@ class GameEngine
             ['TEAM_DEVICE', 'TEACHER_CENTRALIZED'],
             'TEAM_DEVICE'
         );
-        if ($gameModeKey === 'QUIZ_RACE' && $participationMode !== 'TEACHER_CENTRALIZED') {
-            throw new DomainException('Quiz Race saat ini hanya tersedia untuk Mode Tanpa Device (Terpusat).');
-        }
-
         $boards = new BoardTemplateModel();
         $boardTemplateId = (int) ($options['board_template_id'] ?? 0);
         $board = null;
@@ -69,11 +67,24 @@ class GameEngine
 
         $finishRule = $this->validOption((string) ($options['finish_rule'] ?? 'clamp_finish'), ['clamp_finish', 'exact_finish'], 'clamp_finish');
         $lapCount = 1;
+        $raceQuestionLimit = null;
+        $raceRoundQuestionCounts = null;
+        $raceRoundWinnerBonusPoints = null;
 
         if ($gameModeKey === 'QUIZ_RACE') {
             $trackLength = max(6, min(60, (int) ($options['track_length'] ?? 24)));
             $board = $this->applyRaceTrackLength($board, $trackLength);
-            $lapCount = max(1, min(10, (int) ($options['lap_count'] ?? 5)));
+            if ($participationMode === 'TEAM_DEVICE') {
+                $allocationSource = $options['race_round_question_counts']
+                    ?? $options['race_round_question_counts_json']
+                    ?? null;
+                $raceRoundQuestionCounts = $this->raceRounds->normalizeAllocation($allocationSource);
+                $raceQuestionLimit = array_sum($raceRoundQuestionCounts);
+                $raceRoundWinnerBonusPoints = max(0, (int) ($options['race_round_winner_bonus_points'] ?? 100));
+                $lapCount = count($raceRoundQuestionCounts);
+            } else {
+                $lapCount = max(1, min(10, (int) ($options['lap_count'] ?? 5)));
+            }
             $finishRule = 'clamp_finish';
         } else {
             if (isset($options['board_size']) && in_array((int) $options['board_size'], [50, 70], true)) {
@@ -132,6 +143,9 @@ class GameEngine
             'finish_rule' => $finishRule,
             'scoring_json' => json_encode($scoring, JSON_UNESCAPED_SLASHES),
             'question_selection_json' => json_encode($questionSelection, JSON_UNESCAPED_SLASHES),
+            'race_question_limit' => $raceQuestionLimit,
+            'race_round_question_counts_json' => $raceRoundQuestionCounts,
+            'race_round_winner_bonus_points' => $raceRoundWinnerBonusPoints,
             'expires_at' => date('Y-m-d H:i:s', time() + ($this->config->pinTtlMinutes * 60)),
             'created_at' => $now,
             'updated_at' => $now,

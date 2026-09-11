@@ -35,17 +35,25 @@ class QuizRaceModeEngine implements GameModeEngineInterface
 
     public function publicState(array $room, array $board, ?array $turn, array $teams): array
     {
-        return [
+        $state = [
             'key' => $this->key(),
             'label' => $this->label(),
             'status' => 'ACTIVE',
             'renderer' => $this->renderer(),
-            'actions' => ['select_tier', 'answer'],
             'board_model' => 'linear_track',
             'finish_position' => (int) ($room['max_position'] ?? $board['tile_count'] ?? 24),
             'lap_count' => (int) ($room['lap_count'] ?? 1),
             'current_turn_state' => $turn['state'] ?? null,
             'team_count' => count($teams),
         ];
+
+        if (($room['participation_mode'] ?? 'TEACHER_CENTRALIZED') === 'TEAM_DEVICE') {
+            return $state + [
+                'actions' => ['race_question_answer'],
+                'round_model' => 'multi_question_round',
+            ];
+        }
+
+        return $state + ['actions' => ['select_tier', 'answer']];
     }
 }
