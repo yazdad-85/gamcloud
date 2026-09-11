@@ -19,10 +19,23 @@ class RaceTrackService
 
     public function movementForTierAnswer(int $from, string $tier, array $room, array $board): array
     {
-        $maxPosition = (int) $room['max_position'];
-        $steps = $this->stepsForTier($tier);
+        return $this->movementForSteps($from, $this->stepsForTier($tier), $room, $board);
+    }
+
+    public function movementForSteps(
+        int $from,
+        int $steps,
+        array $room,
+        array $board,
+        ?int $boostStepsOverride = null
+    ): array
+    {
+        $maxPosition = max(1, (int) ($room['max_position'] ?? 1));
+        $steps = max(0, $steps);
         $landed = min($maxPosition, $from + $steps);
-        $tileEffect = $this->applyRaceTileEffect($landed, $board, $maxPosition);
+        $tileEffect = $steps === 0
+            ? ['to' => $landed, 'special' => null, 'effects' => []]
+            : $this->applyRaceTileEffect($landed, $board, $maxPosition, $boostStepsOverride);
 
         return [
             'from' => $from,
@@ -34,7 +47,12 @@ class RaceTrackService
         ];
     }
 
-    private function applyRaceTileEffect(int $position, array $board, int $maxPosition): array
+    private function applyRaceTileEffect(
+        int $position,
+        array $board,
+        int $maxPosition,
+        ?int $boostStepsOverride = null
+    ): array
     {
         $tile = $this->specialTileAt($position, $board);
         if ($tile === null) {
@@ -45,7 +63,7 @@ class RaceTrackService
         $label = (string) ($tile['label'] ?? $type);
 
         if ($type === 'BONUS') {
-            $bonusSteps = max(1, (int) ($tile['steps'] ?? 2));
+            $bonusSteps = $boostStepsOverride ?? max(1, (int) ($tile['steps'] ?? 2));
             $to = min($maxPosition, $position + $bonusSteps);
 
             return [
