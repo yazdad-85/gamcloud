@@ -5,6 +5,8 @@ namespace App\Services\Game;
 use App\Models\BoardTemplateModel;
 use App\Models\GameAnswerModel;
 use App\Models\GameEventModel;
+use App\Models\GameRoundModel;
+use App\Models\GameRoundQuestionModel;
 use App\Models\GameRoomModel;
 use App\Models\GameTeamModel;
 use App\Models\GameTurnModel;
@@ -272,6 +274,11 @@ class GameEngine
             throw new DomainException('Minimal satu tim harus join sebelum game dimulai.');
         }
 
+        if (($room['game_mode'] ?? 'SNAKES_LADDERS') === 'QUIZ_RACE'
+            && ($room['participation_mode'] ?? 'TEAM_DEVICE') === 'TEAM_DEVICE') {
+            return $this->startTeamDeviceRace($room, $teams);
+        }
+
         $firstTeam = $this->firstTeamForStart($teams, (string) ($room['turn_order_mode'] ?? 'random'));
 
         $this->db->transStart();
@@ -297,6 +304,143 @@ class GameEngine
         ]);
 
         return $this->snapshot($room['public_uuid']);
+    }
+
+    private function startTeamDeviceRace(array $room, array $teams): array
+    {
+        $startedAtEpochMs = (int) floor(microtime(true) * 1000);
+        $startedAt = date('Y-m-d H:i:s', intdiv($startedAtEpochMs, 1000));
+
+        $this->db->transBegin();
+        try {
+            (new GameRoomModel())->update($room['id'], [
+                'status' => 'PLAYING',
+                'current_team_id' => null,
+                'started_at' => $startedAt,
+            ]);
+            $this->bumpRoom((int) $room['id']);
+            $room = $this->roomById((int) $room['id']);
+            $round = $this->createRaceRound($room, 1, $startedAt);
+            $questionResult = $this->createRaceQuestion($room, $round, 1, $startedAtEpochMs);
+
+            if (! $this->db->transStatus()) {
+                throw new DomainException('Quiz Race gagal dimulai secara atomik.');
+            }
+            $this->db->transCommit();
+        } catch (\Throwable $error) {
+            $this->db->transRollback();
+            throw $error;
+        }
+
+        $question = $questionResult['record'];
+        $selectedQuestion = $questionResult['selected_question'];
+        $this->recordEvent($room, 'race.round_started', [
+            'round_uuid' => $round['public_uuid'],
+            'round_number' => (int) $round['round_number'],
+            'question_target_count' => (int) $round['question_target_count'],
+            'difficulty_schedule' => $round['difficulty_schedule_json'],
+        ]);
+        if ($questionResult['pool_recycled']) {
+            $this->recordEvent($room, 'question.pool_recycled', [
+                'reason' => 'exhausted',
+                'scope' => 'race_question',
+            ]);
+        }
+        $this->recordEvent($room, 'race.question_started', [
+            'round_uuid' => $round['public_uuid'],
+            'question_uuid' => $question['public_uuid'],
+            'question_number' => (int) $question['question_number'],
+            'question_id' => (int) $question['question_id'],
+            'difficulty' => $question['difficulty'],
+            'started_at_epoch_ms' => (int) $question['started_at_epoch_ms'],
+            'deadline_epoch_ms' => (int) $question['deadline_epoch_ms'],
+            'selection' => [
+                'requested_difficulty' => $question['difficulty'],
+                'selected_difficulty' => $selectedQuestion['difficulty'],
+            ],
+        ]);
+        $this->recordEvent($room, 'game.started', [
+            'current_team_uuid' => null,
+            'teams' => array_map([$this, 'publicTeam'], $teams),
+        ]);
+
+        return $this->snapshot($room['public_uuid']);
+    }
+
+    private function createRaceRound(array $room, int $roundNumber, string $startedAt): array
+    {
+        $allocation = $this->raceRounds->normalizeAllocation($room['race_round_question_counts_json'] ?? null);
+        $questionTarget = $allocation[$roundNumber - 1] ?? null;
+        if ($questionTarget === null) {
+            throw new DomainException('Alokasi ronde Quiz Race tidak tersedia.');
+        }
+
+        $roundId = (new GameRoundModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'room_id' => $room['id'],
+            'round_number' => $roundNumber,
+            'state' => 'ROUND_ACTIVE',
+            'question_target_count' => $questionTarget,
+            'question_resolved_count' => 0,
+            'difficulty_schedule_json' => $this->raceRounds->difficultySchedule($questionTarget),
+            'started_at' => $startedAt,
+        ], true);
+
+        $this->db->table('game_teams')
+            ->set('streak_count', 0)
+            ->where('room_id', $room['id'])
+            ->update();
+
+        return (new GameRoundModel())->find($roundId);
+    }
+
+    /**
+     * @return array{record:array<string,mixed>,selected_question:array<string,mixed>,pool_recycled:bool}
+     */
+    private function createRaceQuestion(
+        array $room,
+        array $round,
+        int $questionNumber,
+        int $startedAtEpochMs
+    ): array {
+        $schedule = $round['difficulty_schedule_json'] ?? [];
+        $difficulty = $schedule[$questionNumber - 1] ?? null;
+        if (! is_string($difficulty)) {
+            throw new DomainException('Jadwal difficulty ronde Quiz Race tidak valid.');
+        }
+
+        $selection = $this->questionSelectionRules(
+            $room['question_selection_json'] ?? [],
+            (int) $room['max_position']
+        );
+        $recycled = false;
+        $selectedQuestion = $this->selectQuestion(
+            (int) $room['teacher_id'],
+            $difficulty,
+            $selection['topic_ids'],
+            (int) $room['id'],
+            $recycled
+        );
+        $deadlineAtEpochMs = $startedAtEpochMs + ((int) $room['question_time_seconds'] * 1000);
+        $questionId = (new GameRoundQuestionModel())->insert([
+            'public_uuid' => Uuid::v4(),
+            'round_id' => $round['id'],
+            'question_number' => $questionNumber,
+            'question_id' => $selectedQuestion['id'],
+            'difficulty' => $difficulty,
+            'state' => 'QUESTION_ACTIVE',
+            'answer_count' => 0,
+            'started_at' => date('Y-m-d H:i:s', intdiv($startedAtEpochMs, 1000)),
+            'started_at_epoch_ms' => $startedAtEpochMs,
+            'deadline_at' => date('Y-m-d H:i:s', intdiv($deadlineAtEpochMs, 1000)),
+            'deadline_epoch_ms' => $deadlineAtEpochMs,
+        ], true);
+
+        return [
+            'record' => (new GameRoundQuestionModel())->find($questionId),
+            'selected_question' => $selectedQuestion,
+            'pool_recycled' => $recycled,
+        ];
     }
 
     public function pause(string $roomUuid): array
@@ -1394,6 +1538,7 @@ class GameEngine
     {
         $answersTable = $this->db->prefixTable('game_answers');
         $turnsTable = $this->db->prefixTable('game_turns');
+        $roundQuestionsTable = $this->db->prefixTable('game_round_questions');
 
         $fromAnswers = array_map(
             static fn (array $row): int => (int) $row['question_id'],
@@ -1416,7 +1561,18 @@ class GameEngine
                 ->getResultArray()
         );
 
-        return array_values(array_unique(array_filter(array_merge($fromAnswers, $fromTurns))));
+        $fromRaceQuestions = array_map(
+            static fn (array $row): int => (int) $row['question_id'],
+            $this->db->table('game_round_questions')
+                ->select('game_round_questions.question_id')
+                ->join('game_rounds', 'game_rounds.id = game_round_questions.round_id')
+                ->where('game_rounds.room_id', $roomId)
+                ->where("{$roundQuestionsTable}.question_id IS NOT NULL", null, false)
+                ->get()
+                ->getResultArray()
+        );
+
+        return array_values(array_unique(array_filter(array_merge($fromAnswers, $fromTurns, $fromRaceQuestions))));
     }
 
     private function selectQuestion(
