@@ -138,6 +138,41 @@ final class DocxQuestionImportServiceTest extends CIUnitTestCase
         $this->assertStringContainsString('Jawaban: Benar', $documentXml);
     }
 
+    public function testGeneratedTemplateCanBeImportedBack(): void
+    {
+        $data = (new DocxQuestionTemplateService())->build();
+        $path = tempnam(sys_get_temp_dir(), 'docx_template_import_');
+        $this->assertIsString($path);
+        $this->pathsToClean[] = $path;
+        $this->assertNotFalse(file_put_contents($path, $data));
+
+        $result = (new DocxQuestionImportService())->import($path, 1);
+        $this->pathsToClean[] = rtrim(FCPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . 'uploads/question-imports/1/' . $result['batch_uuid'];
+
+        $this->assertSame(4, $result['imported']);
+        $this->assertSame(0, $result['skipped']);
+    }
+
+    public function testImportDocxSupportsWordAutomaticNumberedLists(): void
+    {
+        $path = $this->makeNumberedListDocxFixture();
+        $result = (new DocxQuestionImportService())->import($path, 1);
+        $this->pathsToClean[] = rtrim(FCPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . 'uploads/question-imports/1/' . $result['batch_uuid'];
+
+        $this->assertSame(2, $result['imported']);
+        $this->assertSame(0, $result['skipped']);
+
+        $planet = (new QuestionModel())->where('stem', 'Planet merah adalah ...')->first();
+        $this->assertNotNull($planet);
+
+        $options = (new QuestionOptionModel())->where('question_id', $planet['id'])->orderBy('sort_order')->findAll();
+        $this->assertCount(3, $options);
+        $this->assertSame('B', array_values(array_filter($options, static fn (array $option): bool => (int) $option['is_correct'] === 1))[0]['label']);
+        $this->assertSame('Mars', $options[1]['body']);
+    }
+
     private function makeDocxFixture(): string
     {
         $path = tempnam(sys_get_temp_dir(), 'docx_import_');
@@ -181,6 +216,60 @@ final class DocxQuestionImportServiceTest extends CIUnitTestCase
   </w:body>
 </w:document>');
         $zip->addFromString('word/media/image1.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='));
+        $zip->close();
+
+        return $path;
+    }
+
+    private function makeNumberedListDocxFixture(): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'docx_numbered_import_');
+        $this->pathsToClean[] = $path;
+
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
+</Types>');
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>');
+        $zip->addFromString('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdNum" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
+</Relationships>');
+        $zip->addFromString('word/numbering.xml', '<?xml version="1.0" encoding="UTF-8"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="1">
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+  </w:abstractNum>
+  <w:abstractNum w:abstractNumId="2">
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperLetter"/><w:lvlText w:val="%1."/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="10"><w:abstractNumId w:val="1"/></w:num>
+  <w:num w:numId="20"><w:abstractNumId w:val="2"/></w:num>
+  <w:num w:numId="21"><w:abstractNumId w:val="2"/></w:num>
+</w:numbering>');
+        $zip->addFromString('word/document.xml', '<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Template dengan numbering otomatis Word.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="10"/></w:numPr></w:pPr><w:r><w:t>[EASY] Planet merah adalah ...</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="20"/></w:numPr></w:pPr><w:r><w:t>Venus</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="20"/></w:numPr></w:pPr><w:r><w:t>Mars (benar)</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="20"/></w:numPr></w:pPr><w:r><w:t>Jupiter</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="10"/></w:numPr></w:pPr><w:r><w:t>Ibu kota Indonesia saat ini adalah ...</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="21"/></w:numPr></w:pPr><w:r><w:t>Bandung</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="21"/></w:numPr></w:pPr><w:r><w:t>Jakarta</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Kunci: B</w:t></w:r></w:p>
+  </w:body>
+</w:document>');
         $zip->close();
 
         return $path;

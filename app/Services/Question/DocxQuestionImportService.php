@@ -43,7 +43,8 @@ class DocxQuestionImportService
 
             $batchUuid = Uuid::v4();
             $relationships = $this->imageRelationships($zip);
-            $paragraphs = $this->paragraphs($documentXml, $relationships, $zip, $teacherId, $batchUuid);
+            $numbering = $this->numberingDefinitions($zip);
+            $paragraphs = $this->paragraphs($documentXml, $relationships, $numbering, $zip, $teacherId, $batchUuid);
             $parsed = $this->parseQuestions($paragraphs);
 
             return $this->persist($parsed, $teacherId, $batchUuid, $this->skippedQuestions, $topicId);
@@ -89,7 +90,63 @@ class DocxQuestionImportService
         return str_starts_with($path, 'word/media/') ? $path : null;
     }
 
-    private function paragraphs(string $documentXml, array $relationships, ZipArchive $zip, int $teacherId, string $batchUuid): array
+    private function numberingDefinitions(ZipArchive $zip): array
+    {
+        $numberingXml = $zip->getFromName('word/numbering.xml');
+        if ($numberingXml === false) {
+            return [
+                'nums' => [],
+                'levels' => [],
+            ];
+        }
+
+        $document = $this->xmlDocument($numberingXml);
+        $xpath = new \DOMXPath($document);
+        $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
+
+        $numbering = [
+            'nums' => [],
+            'levels' => [],
+        ];
+
+        foreach ($xpath->query('//w:num') ?: [] as $num) {
+            $numId = $this->wAttr($num, 'numId');
+            $abstractNode = $xpath->query('./w:abstractNumId', $num)->item(0);
+            if ($numId === '' || ! $abstractNode instanceof \DOMElement) {
+                continue;
+            }
+
+            $numbering['nums'][$numId] = $this->wAttr($abstractNode, 'val');
+        }
+
+        foreach ($xpath->query('//w:abstractNum') ?: [] as $abstractNum) {
+            $abstractNumId = $this->wAttr($abstractNum, 'abstractNumId');
+            if ($abstractNumId === '') {
+                continue;
+            }
+
+            foreach ($xpath->query('./w:lvl', $abstractNum) ?: [] as $level) {
+                $ilvl = $this->wAttr($level, 'ilvl');
+                if ($ilvl === '') {
+                    continue;
+                }
+
+                $numFmt = $xpath->query('./w:numFmt', $level)->item(0);
+                $lvlText = $xpath->query('./w:lvlText', $level)->item(0);
+                $start = $xpath->query('./w:start', $level)->item(0);
+
+                $numbering['levels'][$abstractNumId][$ilvl] = [
+                    'format' => $numFmt instanceof \DOMElement ? $this->wAttr($numFmt, 'val') : 'decimal',
+                    'text' => $lvlText instanceof \DOMElement ? $this->wAttr($lvlText, 'val') : '%' . (((int) $ilvl) + 1) . '.',
+                    'start' => $start instanceof \DOMElement ? max(1, (int) $this->wAttr($start, 'val')) : 1,
+                ];
+            }
+        }
+
+        return $numbering;
+    }
+
+    private function paragraphs(string $documentXml, array $relationships, array $numbering, ZipArchive $zip, int $teacherId, string $batchUuid): array
     {
         $document = $this->xmlDocument($documentXml);
         $xpath = new \DOMXPath($document);
@@ -97,6 +154,7 @@ class DocxQuestionImportService
         $xpath->registerNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
 
         $paragraphs = [];
+        $numberingCounters = [];
         foreach ($xpath->query('//w:p') ?: [] as $paragraph) {
             $text = '';
             foreach ($xpath->query('.//w:t | .//w:tab | .//w:br', $paragraph) ?: [] as $node) {
@@ -117,6 +175,12 @@ class DocxQuestionImportService
             }
 
             $text = $this->normalizeText($text);
+            $prefix = $paragraph instanceof \DOMElement
+                ? $this->numberingPrefix($paragraph, $xpath, $numbering, $numberingCounters, $text)
+                : '';
+            if ($prefix !== '') {
+                $text = $this->normalizeText($prefix . $text);
+            }
             if ($text !== '' || $images !== []) {
                 $paragraphs[] = [
                     'text' => $text,
@@ -126,6 +190,76 @@ class DocxQuestionImportService
         }
 
         return $paragraphs;
+    }
+
+    private function numberingPrefix(\DOMElement $paragraph, \DOMXPath $xpath, array $numbering, array &$counters, string $text): string
+    {
+        if ($text !== '' && (
+            preg_match('/^(?:soal\s*)?\d{1,3}[\.\)]\s*/iu', $text) === 1
+            || preg_match('/^\*?\s*[A-Ha-h][\.\):\-]\s*/u', $text) === 1
+        )) {
+            return '';
+        }
+
+        $numIdNode = $xpath->query('./w:pPr/w:numPr/w:numId', $paragraph)->item(0);
+        if (! $numIdNode instanceof \DOMElement) {
+            return '';
+        }
+
+        $numId = $this->wAttr($numIdNode, 'val');
+        $ilvlNode = $xpath->query('./w:pPr/w:numPr/w:ilvl', $paragraph)->item(0);
+        $ilvl = $ilvlNode instanceof \DOMElement ? $this->wAttr($ilvlNode, 'val') : '0';
+        $abstractNumId = $numbering['nums'][$numId] ?? null;
+        $level = is_string($abstractNumId) ? ($numbering['levels'][$abstractNumId][$ilvl] ?? null) : null;
+        if (! is_array($level) || ($level['format'] ?? '') === 'bullet') {
+            return '';
+        }
+
+        $levelIndex = (int) $ilvl;
+        $start = max(1, (int) ($level['start'] ?? 1));
+        $counters[$numId] ??= [];
+        foreach (array_keys($counters[$numId]) as $existingLevel) {
+            if ((int) $existingLevel > $levelIndex) {
+                unset($counters[$numId][$existingLevel]);
+            }
+        }
+
+        $counters[$numId][$levelIndex] = ($counters[$numId][$levelIndex] ?? ($start - 1)) + 1;
+
+        $template = (string) ($level['text'] ?? ('%' . ($levelIndex + 1) . '.'));
+        $prefix = preg_replace_callback('/%(\d+)/', function (array $match) use ($numbering, $abstractNumId, $counters, $numId): string {
+            $placeholderLevel = max(0, ((int) $match[1]) - 1);
+            $placeholderConfig = $numbering['levels'][$abstractNumId][$placeholderLevel] ?? null;
+            $value = $counters[$numId][$placeholderLevel] ?? 1;
+
+            return $this->formatNumberingValue($value, is_array($placeholderConfig) ? (string) ($placeholderConfig['format'] ?? 'decimal') : 'decimal');
+        }, $template) ?? $template;
+
+        $prefix = trim($prefix);
+
+        return $prefix === '' ? '' : $prefix . ' ';
+    }
+
+    private function formatNumberingValue(int $value, string $format): string
+    {
+        return match ($format) {
+            'upperLetter' => $this->letterNumber($value, true),
+            'lowerLetter' => $this->letterNumber($value, false),
+            default => (string) $value,
+        };
+    }
+
+    private function letterNumber(int $value, bool $upper): string
+    {
+        $value = max(1, $value);
+        $letters = '';
+        while ($value > 0) {
+            $value--;
+            $letters = chr(65 + ($value % 26)) . $letters;
+            $value = intdiv($value, 26);
+        }
+
+        return $upper ? $letters : strtolower($letters);
     }
 
     private function parseQuestions(array $paragraphs): array
@@ -381,7 +515,7 @@ class DocxQuestionImportService
 
     private function isQuestionLine(string $line, ?string &$stem): bool
     {
-        if (preg_match('/^(?:soal\s*)?(\d{1,3})[\.\)]\s+(.+)$/iu', $line, $match) === 1) {
+        if (preg_match('/^(?:soal\s*)?(\d{1,3})[\.\)]\s*(.+)$/iu', $line, $match) === 1) {
             $stem = trim($match[2]);
 
             return true;
@@ -506,5 +640,12 @@ class DocxQuestionImportService
         }
 
         return $document;
+    }
+
+    private function wAttr(\DOMElement $element, string $name): string
+    {
+        $value = $element->getAttributeNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', $name);
+
+        return $value !== '' ? $value : $element->getAttribute($name);
     }
 }
