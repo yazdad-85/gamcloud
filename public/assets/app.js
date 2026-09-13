@@ -630,6 +630,7 @@
             el.dataset.teamUuid = snapshot.room.current_team_uuid || '';
         });
         updateCountdown(root, snapshot);
+        syncProjectorMusic(snapshot);
     }
 
     function updateCountdown(root, snapshot) {
@@ -658,6 +659,20 @@
             GameFx.sound.startTension({remaining: countdown.remaining});
         } else {
             GameFx.sound.stopTension();
+        }
+    }
+
+    function syncProjectorMusic(snapshot) {
+        if (!document.body.classList.contains('projector') || !window.GameFx || !GameFx.sound) {
+            return;
+        }
+
+        const roomPlaying = snapshot && snapshot.room && snapshot.room.status === 'PLAYING';
+        const isRace = Boolean(snapshot && snapshot.mode_state && snapshot.mode_state.round_model === 'multi_question_round');
+        if (roomPlaying && isRace && GameFx.sound.startMusic) {
+            GameFx.sound.startMusic();
+        } else if (GameFx.sound.stopMusic) {
+            GameFx.sound.stopMusic();
         }
     }
 

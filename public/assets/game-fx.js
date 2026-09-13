@@ -18,6 +18,8 @@
     var muted = false;
     var tensionTimer = null;
     var tensionPulseMs = 900;
+    var musicTimer = null;
+    var musicStepIndex = 0;
 
     try {
         muted = window.localStorage.getItem(MUTE_STORAGE_KEY) === '1';
@@ -34,6 +36,7 @@
         }
         if (muted) {
             stopTension();
+            stopMusic();
         }
         return muted;
     }
@@ -44,9 +47,18 @@
 
     function unlockSound() {
         var ctx = ensureAudioCtx();
-        if (ctx && ctx.state === 'suspended') {
-            ctx.resume();
+        if (!ctx) {
+            return Promise.resolve(false);
         }
+        if (ctx && ctx.state === 'suspended') {
+            return ctx.resume().then(function () {
+                return ctx.state === 'running';
+            }).catch(function () {
+                return false;
+            });
+        }
+
+        return Promise.resolve(ctx.state === 'running');
     }
 
     function tone(freq, startOffset, duration, waveType, gainPeak) {
@@ -118,7 +130,6 @@
         if (muted) {
             return;
         }
-        unlockSound();
         var remaining = options && typeof options.remaining === 'number' ? options.remaining : null;
         var nextMs = remaining !== null && remaining <= 4 ? 420 : remaining !== null && remaining <= 7 ? 620 : 900;
         if (tensionTimer && tensionPulseMs === nextMs) {
@@ -141,6 +152,47 @@
             window.clearInterval(tensionTimer);
             tensionTimer = null;
         }
+    }
+
+    function musicPulse() {
+        if (muted) {
+            stopMusic();
+            return;
+        }
+        var ctx = ensureAudioCtx();
+        if (!ctx || ctx.state !== 'running') {
+            return;
+        }
+
+        var bass = [110, 110, 146.83, 98][musicStepIndex % 4];
+        var lead = [220, 261.63, 293.66, 329.63, 293.66, 261.63, 220, 196][musicStepIndex % 8];
+        tone(bass, 0, 0.22, 'triangle', 0.045);
+        tone(lead, 0.08, 0.18, 'sine', 0.035);
+        if (musicStepIndex % 4 === 2) {
+            tone(392, 0.16, 0.12, 'triangle', 0.025);
+        }
+        musicStepIndex++;
+    }
+
+    function startMusic() {
+        if (muted || musicTimer) {
+            return;
+        }
+        unlockSound().then(function (ready) {
+            if (!ready || muted || musicTimer) {
+                return;
+            }
+            musicPulse();
+            musicTimer = window.setInterval(musicPulse, 720);
+        });
+    }
+
+    function stopMusic() {
+        if (musicTimer) {
+            window.clearInterval(musicTimer);
+            musicTimer = null;
+        }
+        musicStepIndex = 0;
     }
 
     var SOUND_LIBRARY = {
@@ -207,7 +259,18 @@
         var key = SOUND_ALIASES[name] || name;
         var fn = SOUND_LIBRARY[key];
         if (fn) {
-            unlockSound();
+            var ctx = ensureAudioCtx();
+            if (!ctx) {
+                return;
+            }
+            if (ctx.state !== 'running') {
+                unlockSound().then(function (ready) {
+                    if (ready && !muted) {
+                        fn();
+                    }
+                });
+                return;
+            }
             fn();
         }
     }
@@ -519,6 +582,8 @@
         sound: {
             unlock: unlockSound,
             play: playSoundSafe,
+            startMusic: startMusic,
+            stopMusic: stopMusic,
             startTension: startTension,
             stopTension: stopTension,
             setMuted: setMuted,

@@ -57,7 +57,9 @@ UlarTangga.projector({
 document.querySelectorAll('[data-fx-sound-unlock-button]').forEach(function (button) {
     button.addEventListener('click', function () {
         if (window.GameFx && GameFx.sound && GameFx.sound.unlock) {
-            GameFx.sound.unlock();
+            GameFx.sound.unlock().then(function () {
+                GameFx.sound.play('bonus');
+            });
         }
         button.closest('[data-fx-sound-unlock]').classList.add('hidden');
     });
