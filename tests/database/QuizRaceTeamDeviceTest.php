@@ -63,7 +63,7 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $this->assertSame($schedule[0], $question['difficulty']);
         $this->assertGreaterThanOrEqual($beforeStartMs, $question['started_at_epoch_ms']);
         $this->assertLessThanOrEqual($afterStartMs, $question['started_at_epoch_ms']);
-        $this->assertSame(30000, $question['deadline_epoch_ms'] - $question['started_at_epoch_ms']);
+        $this->assertSame(20000, $question['deadline_epoch_ms'] - $question['started_at_epoch_ms']);
         $this->assertSame(
             intdiv($question['started_at_epoch_ms'], 1000),
             strtotime($question['started_at'])
@@ -733,6 +733,22 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $this->assertSame(0, (new GameRoundQuestionModel())->where('round_id', $fixture['round']['id'])->where('question_number', 2)->countAllResults());
     }
 
+    public function testSnapshotAutoResolvesRaceQuestionAfterDeadline(): void
+    {
+        $fixture = $this->startAnswerRace(2);
+        $startedAtEpochMs = (int) $fixture['question']['started_at_epoch_ms'];
+        $deadlineEpochMs = $startedAtEpochMs + 20000;
+        $this->setQuestionWindow($fixture['question']['id'], $startedAtEpochMs, $deadlineEpochMs);
+
+        $engine = $this->engineAt([$deadlineEpochMs, $deadlineEpochMs + 50, $deadlineEpochMs + 50]);
+        $snapshot = $engine->snapshot($fixture['room']['uuid']);
+        $question = (new GameRoundQuestionModel())->find($fixture['question']['id']);
+
+        $this->assertSame('QUESTION_RESOLVED', $question['state']);
+        $this->assertSame('QUESTION_RESOLVED', $snapshot['current_round']['current_question']['state']);
+        $this->assertSame(2, (new GameRoundAnswerModel())->where('round_question_id', $fixture['question']['id'])->where('outcome', 'TIMEOUT')->countAllResults());
+    }
+
     public function testAdvanceCreatesExactlyOneNextQuestionWhenRoundStillHasQuota(): void
     {
         $fixture = $this->startAnswerRace(2);
@@ -996,12 +1012,12 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $engine->pause($fixture['room']['uuid']);
         $pausedQuestion = (new GameRoundQuestionModel())->find($fixture['question']['id']);
         $this->assertSame('PAUSED', (new GameRoomModel())->find($fixture['stored_room']['id'])['status']);
-        $this->assertSame(20000, $pausedQuestion['paused_remaining_ms']);
+        $this->assertSame(10000, $pausedQuestion['paused_remaining_ms']);
 
         $engine->resume($fixture['room']['uuid']);
         $resumedQuestion = (new GameRoundQuestionModel())->find($fixture['question']['id']);
         $this->assertNull($resumedQuestion['paused_remaining_ms']);
-        $this->assertSame($resumeAtEpochMs + 20000, $resumedQuestion['deadline_epoch_ms']);
+        $this->assertSame($resumeAtEpochMs + 10000, $resumedQuestion['deadline_epoch_ms']);
         $this->assertSame('PLAYING', (new GameRoomModel())->find($fixture['stored_room']['id'])['status']);
     }
 
@@ -1078,21 +1094,21 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $t2 = $t1 + 60000;
         $t3 = $t2 + 5000;
         $t4 = $t3 + 60000;
-        $engine = $this->engineAt([$t1, $t2, $t3, $t4]);
+        $engine = $this->engineAt([$t1, $t2, $t2, $t3, $t4, $t4]);
 
         $engine->pause($fixture['room']['uuid']);
         $engine->resume($fixture['room']['uuid']);
         $afterFirstCycle = (new GameRoundQuestionModel())->find($fixture['question']['id']);
-        $this->assertSame($t2 + 25000, $afterFirstCycle['deadline_epoch_ms']);
+        $this->assertSame($t2 + 15000, $afterFirstCycle['deadline_epoch_ms']);
 
         $engine->pause($fixture['room']['uuid']);
         $secondPause = (new GameRoundQuestionModel())->find($fixture['question']['id']);
-        $this->assertSame(20000, $secondPause['paused_remaining_ms']);
+        $this->assertSame(10000, $secondPause['paused_remaining_ms']);
 
         $engine->resume($fixture['room']['uuid']);
         $afterSecondCycle = (new GameRoundQuestionModel())->find($fixture['question']['id']);
         $this->assertNull($afterSecondCycle['paused_remaining_ms']);
-        $this->assertSame($t4 + 20000, $afterSecondCycle['deadline_epoch_ms']);
+        $this->assertSame($t4 + 10000, $afterSecondCycle['deadline_epoch_ms']);
         $this->assertSame('PLAYING', (new GameRoomModel())->find($fixture['stored_room']['id'])['status']);
     }
 

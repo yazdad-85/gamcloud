@@ -255,6 +255,33 @@ final class GameEngineHardeningTest extends CIUnitTestCase
         $this->assertSame(1, (new GameAnswerModel())->where('turn_id', $turn['id'])->where('option_id', null)->countAllResults());
     }
 
+    public function testSnapshotAutoCompletesExpiredQuestionAndMovesToNextTeam(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'Auto Timeout Snapshot Test', [
+            'turn_order_mode' => 'join_order',
+        ])['room'];
+        $first = $engine->joinByPin($room['pin'], 'Tim A')['team'];
+        $second = $engine->joinByPin($room['pin'], 'Tim B')['team'];
+
+        $engine->start($room['uuid']);
+        $engine->roll($room['uuid'], $first['public_uuid']);
+
+        $turns = new GameTurnModel();
+        $turn = $turns->where('room_id', $this->roomId($room['uuid']))->orderBy('id', 'DESC')->first();
+        $turns->update($turn['id'], [
+            'question_deadline_at' => date('Y-m-d H:i:s', time() - 5),
+        ]);
+
+        $snapshot = $engine->snapshot($room['uuid']);
+        $expiredTurn = $turns->find($turn['id']);
+
+        $this->assertSame('QUESTION_TIMEOUT', $expiredTurn['state']);
+        $this->assertSame($second['public_uuid'], $snapshot['room']['current_team_uuid']);
+        $this->assertSame('ROLL_READY', $snapshot['current_turn']['state']);
+        $this->assertSame(1, (new GameAnswerModel())->where('turn_id', $turn['id'])->where('option_id', null)->countAllResults());
+    }
+
     public function testExactFinishBouncesWhenDiceExceedsFinish(): void
     {
         $engine = new GameEngine();

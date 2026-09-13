@@ -82,7 +82,7 @@ class CreateGameSchema extends Migration
             'status' => ['type' => 'VARCHAR', 'constraint' => 20, 'default' => 'LOBBY'],
             'current_team_id' => ['type' => 'INTEGER', 'null' => true],
             'state_version' => ['type' => 'INTEGER', 'default' => 1],
-            'question_time_seconds' => ['type' => 'INTEGER', 'default' => 30],
+            'question_time_seconds' => ['type' => 'INTEGER', 'default' => 20],
             'redemption_time_seconds' => ['type' => 'INTEGER', 'default' => 10],
             'max_teams' => ['type' => 'INTEGER', 'default' => 6],
             'max_position' => ['type' => 'INTEGER', 'default' => 100],

@@ -949,8 +949,59 @@ class GameEngine
             return;
         }
 
+        $this->advanceExpiredRaceQuestionIfNeeded($room);
         $this->advanceResolvedRaceQuestionIfNeeded((int) $room['id']);
         $this->advanceCompletedRaceRoundIfNeeded((int) $room['id']);
+    }
+
+    private function advanceExpiredRaceQuestionIfNeeded(array $room): void
+    {
+        $round = $this->activeRaceRound((int) $room['id']);
+        if ($round === null) {
+            return;
+        }
+
+        $question = $this->activeRaceQuestion((int) $round['id']);
+        if ($question === null || $this->currentEpochMs() < (int) $question['deadline_epoch_ms']) {
+            return;
+        }
+
+        try {
+            $this->resolveRaceQuestion($room['public_uuid']);
+        } catch (DomainException) {
+            // A concurrent answer, poll, or teacher action may have resolved it first.
+        }
+    }
+
+    private function advanceTurnStateIfNeeded(array $room): void
+    {
+        if ($this->isTeamDeviceRace($room) || $room['status'] !== 'PLAYING') {
+            return;
+        }
+
+        $turn = $this->activeTurn((int) $room['id']);
+        if ($turn === null || ! $this->isTurnExpired($turn)) {
+            return;
+        }
+
+        $team = (new GameTeamModel())->find($turn['team_id']);
+        if ($team === null) {
+            return;
+        }
+
+        try {
+            if ($turn['state'] === 'QUESTION_ACTIVE') {
+                $this->resolveTimedOutTurn($room, $team, $turn);
+            } elseif ($turn['state'] === 'MYSTERY_QUESTION_ACTIVE') {
+                $this->resolveMysteryOutcome($room, $team, $turn, false);
+            } elseif ($turn['state'] === 'MYSTERY_CHOICE_PENDING') {
+                $this->resolveMysteryChoiceTimeout($room, $team, $turn);
+            } elseif (in_array($turn['state'], ['SNAKE_REDEMPTION_ACTIVE', 'LADDER_CHALLENGE_ACTIVE'], true)) {
+                $this->resolveBoardChallengeTimeout($room, $team, $turn);
+            }
+        } catch (DomainException) {
+            // A concurrent answer or timeout resolver may already have advanced the turn.
+        }
     }
 
     private function advanceResolvedRaceQuestionIfNeeded(int $roomId): void
@@ -2341,6 +2392,8 @@ class GameEngine
     {
         $room = $this->roomByUuid($roomUuid);
         if ($allowAdvance) {
+            $this->advanceTurnStateIfNeeded($room);
+            $room = $this->roomByUuid($roomUuid);
             $this->advanceRaceStateIfNeeded($room);
             $room = $this->roomByUuid($roomUuid);
         }
@@ -2998,7 +3051,7 @@ class GameEngine
     private function isTurnExpired(array $turn): bool
     {
         return $turn['question_deadline_at'] !== null
-            && strtotime((string) $turn['question_deadline_at']) < time();
+            && strtotime((string) $turn['question_deadline_at']) <= time();
     }
 
     private function resolveTimedOutTurn(array $room, array $team, array $turn): array

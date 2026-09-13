@@ -674,9 +674,32 @@
         return countdownState(snapshot).remaining === 0;
     }
 
+    function expiredStateKey(snapshot) {
+        if (!snapshot || !snapshot.room || snapshot.room.status !== 'PLAYING') {
+            return null;
+        }
+
+        const countdown = countdownState(snapshot);
+        if (countdown.remaining === 0 && snapshot.current_turn && snapshot.current_turn.uuid) {
+            return 'turn:' + snapshot.current_turn.uuid;
+        }
+
+        const question = snapshot.current_round && snapshot.current_round.current_question;
+        if (question && question.state === 'QUESTION_ACTIVE' && question.deadline_epoch_ms) {
+            const remaining = Math.max(0, Math.ceil((Number(question.deadline_epoch_ms) - Date.now()) / 1000));
+            if (remaining === 0) {
+                return 'race:' + question.uuid;
+            }
+        }
+
+        return null;
+    }
+
     function createRuntime(config) {
         let snapshot = config.snapshot;
         const root = document;
+        let autoRefreshKey = null;
+        let autoRefreshBusy = false;
 
         function draw() {
             updateSummary(root, snapshot);
@@ -717,7 +740,21 @@
         };
 
         draw();
-        window.setInterval(() => updateSummary(root, snapshot), 500);
+        window.setInterval(() => {
+            updateSummary(root, snapshot);
+            const key = expiredStateKey(snapshot);
+            if (key && key !== autoRefreshKey && !autoRefreshBusy) {
+                autoRefreshKey = key;
+                autoRefreshBusy = true;
+                runtime.refresh()
+                    .catch(() => {
+                        autoRefreshKey = null;
+                    })
+                    .finally(() => {
+                        autoRefreshBusy = false;
+                    });
+            }
+        }, 500);
         window.setInterval(() => runtime.refresh(), config.interval || 2200);
 
         return runtime;

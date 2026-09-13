@@ -8,7 +8,7 @@ class Game extends BaseConfig
 {
     public int $pinTtlMinutes = 180;
     public int $teamSessionTtlMinutes = 240;
-    public int $defaultQuestionTime = 30;
+    public int $defaultQuestionTime = 20;
     public int $redemptionTime = 10;
     public int $defaultTileCount = 100;
     public int $correctAnswerPoints = 100;
