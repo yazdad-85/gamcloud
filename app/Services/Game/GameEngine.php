@@ -961,7 +961,6 @@ class GameEngine
 
         $this->advanceExpiredRaceQuestionIfNeeded($room);
         $this->advanceResolvedRaceQuestionIfNeeded((int) $room['id']);
-        $this->advanceCompletedRaceRoundIfNeeded((int) $room['id']);
     }
 
     private function advanceExpiredRaceQuestionIfNeeded(array $room): void
@@ -1200,15 +1199,25 @@ class GameEngine
         ]);
     }
 
-    private function advanceCompletedRaceRoundIfNeeded(int $roomId): void
+    public function continueRaceRound(string $roomUuid): array
     {
+        $room = $this->roomByUuid($roomUuid);
+        $this->assertRoomNotExpired($room, 'Room sudah kedaluwarsa. Permainan tidak bisa dilanjutkan.');
+        if ($room['status'] !== 'PLAYING') {
+            throw new DomainException('Game belum dalam status PLAYING.');
+        }
+        if (! $this->isTeamDeviceRace($room)) {
+            throw new DomainException('Lanjut ronde hanya tersedia untuk Quiz Race Device per Tim.');
+        }
+
+        $roomId = (int) $room['id'];
         $round = (new GameRoundModel())
             ->where('room_id', $roomId)
             ->where('state', 'ROUND_COMPLETED')
             ->orderBy('round_number', 'DESC')
             ->first();
-        if ($round === null || $this->currentEpochMs() < (int) $round['reveal_until_epoch_ms']) {
-            return;
+        if ($round === null) {
+            throw new DomainException('Belum ada checkpoint ronde Quiz Race yang siap dilanjutkan.');
         }
 
         $this->db->table('game_rounds')
@@ -1217,9 +1226,10 @@ class GameEngine
             ->where('state', 'ROUND_COMPLETED')
             ->update();
         if ($this->db->affectedRows() !== 1) {
-            return;
+            throw new DomainException('Checkpoint ronde Quiz Race sudah dilanjutkan.');
         }
 
+        $this->bumpRoom($roomId);
         $room = $this->roomById($roomId);
         $allocation = $this->raceRounds->normalizeAllocation($room['race_round_question_counts_json'] ?? null);
         $nextRoundNumber = (int) $round['round_number'] + 1;
@@ -1229,6 +1239,8 @@ class GameEngine
         } else {
             $this->finishRaceByQuestionLimit($room);
         }
+
+        return $this->snapshot($roomUuid, allowAdvance: false);
     }
 
     private function startNextRaceRound(array $room, int $roundNumber): void

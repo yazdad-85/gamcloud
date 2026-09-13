@@ -791,6 +791,7 @@
         const resumeButton = document.querySelector('[data-resume]');
         const skipTurnButton = document.querySelector('[data-skip-turn]');
         const forceTimeoutButton = document.querySelector('[data-force-timeout]');
+        const raceContinueRoundButton = document.querySelector('[data-race-continue-round]');
         const startTimerButton = document.querySelector('[data-start-timer]');
         const rosterPanel = document.querySelector('[data-roster-panel]');
         const rosterAddForm = document.querySelector('[data-roster-add-form]');
@@ -812,6 +813,9 @@
             const hasActiveQuestion = isPlaying && turn && turn.state === 'QUESTION_ACTIVE';
             const isRace = isRaceTeamDevice(snapshot);
             const raceQuestion = isRace && snapshot.current_round ? snapshot.current_round.current_question : null;
+            const completedRaceRound = isRace && !snapshot.current_round && snapshot.last_completed_round && snapshot.last_completed_round.state === 'ROUND_COMPLETED'
+                ? snapshot.last_completed_round
+                : null;
 
             if (startButton) {
                 startButton.disabled = !canStart;
@@ -840,6 +844,13 @@
                 const turnPending = turn && (turn.state === 'QUESTION_PENDING_START' || turn.state === 'MYSTERY_QUESTION_PENDING_START');
                 startTimerButton.hidden = isRace || !turnPending;
                 startTimerButton.disabled = isRace || !turnPending;
+            }
+            if (raceContinueRoundButton) {
+                raceContinueRoundButton.hidden = !isRace;
+                raceContinueRoundButton.disabled = !isPlaying || !completedRaceRound;
+                raceContinueRoundButton.textContent = completedRaceRound
+                    ? 'Lanjut Ronde ' + (Number(completedRaceRound.round_number || 0) + 1)
+                    : 'Lanjut Ronde';
             }
             drawRaceStatusPanel(snapshot, isRace, raceQuestion);
             if (rosterPanel) {
@@ -962,12 +973,30 @@
             });
         }
 
+        if (raceContinueRoundButton) {
+            raceContinueRoundButton.addEventListener('click', function () {
+                teacherRaceContinueRound(raceContinueRoundButton);
+            });
+        }
+
         function teacherRaceForceResolve(button) {
             button.disabled = true;
             runtime.setError('');
             jsonFetch('/api/v1/rooms/' + config.roomUuid + '/race-question/resolve', {
                 method: 'POST',
                 body: JSON.stringify({force: true}),
+            })
+                .then(runtime.refresh)
+                .catch((error) => runtime.setError(error.message))
+                .finally(drawTeacherControl);
+        }
+
+        function teacherRaceContinueRound(button) {
+            button.disabled = true;
+            runtime.setError('');
+            jsonFetch('/api/v1/rooms/' + config.roomUuid + '/race-round/continue', {
+                method: 'POST',
+                body: '{}',
             })
                 .then(runtime.refresh)
                 .catch((error) => runtime.setError(error.message))

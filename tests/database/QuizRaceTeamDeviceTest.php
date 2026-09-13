@@ -826,7 +826,7 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
             ->countAllResults());
     }
 
-    public function testAdvanceClosesCheckpointAndStartsExactlyOneNextRoundAfterReveal(): void
+    public function testCompletedRaceRoundWaitsForTeacherBeforeStartingNextRound(): void
     {
         $fixture = $this->startAnswerRace(1);
         (new GameRoundModel())->update($fixture['round']['id'], ['question_target_count' => 1]);
@@ -841,6 +841,13 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $this->forceRoundRevealElapsed($fixture['round']['id']);
         $fixture['engine']->snapshot($fixture['room']['uuid']);
         $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $stillCompletedRound = (new GameRoundModel())->find($fixture['round']['id']);
+        $roundsBeforeContinue = (new GameRoundModel())->where('room_id', $fixture['stored_room']['id'])->findAll();
+        $this->assertSame('ROUND_COMPLETED', $stillCompletedRound['state']);
+        $this->assertCount(1, $roundsBeforeContinue);
+
+        $fixture['engine']->continueRaceRound($fixture['room']['uuid']);
 
         $closedRound = (new GameRoundModel())->find($fixture['round']['id']);
         $nextRounds = (new GameRoundModel())->where('room_id', $fixture['stored_room']['id'])->where('round_number', 2)->findAll();
@@ -869,6 +876,10 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         ]);
 
         $fixture['engine']->snapshot($fixture['room']['uuid']);
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
+        $this->assertSame('PLAYING', $storedRoom['status']);
+
+        $fixture['engine']->continueRaceRound($fixture['room']['uuid']);
 
         $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
         $this->assertSame('FINISHED', $storedRoom['status']);
@@ -965,7 +976,7 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $completedRoundUuid = $fixture['round']['public_uuid'];
 
         $this->forceRoundRevealElapsed($fixture['round']['id']);
-        $fixture['engine']->snapshot($fixture['room']['uuid']);
+        $fixture['engine']->continueRaceRound($fixture['room']['uuid']);
 
         $snapshot = $fixture['engine']->snapshot($fixture['room']['uuid']);
 

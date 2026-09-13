@@ -231,6 +231,42 @@ final class QuizRaceTeamDeviceApiTest extends CIUnitTestCase
         $this->assertSame('QUESTION_RESOLVED', $question['state']);
     }
 
+    public function testOwnerContinuesCompletedRaceRoundFromCheckpoint(): void
+    {
+        $fixture = $this->startRace(1);
+        (new GameRoundModel())->update($fixture['round']['id'], ['question_target_count' => 1]);
+        $option = $this->correctOption($fixture['question']);
+
+        $this->withSession($this->teamSession($fixture['room']['uuid'], $fixture['teams'][0], $fixture['joinTokens'][0]))
+            ->withBodyFormat('json')
+            ->post('/api/v1/rooms/' . $fixture['room']['uuid'] . '/race-question/answer', [
+                'team_uuid' => $fixture['teams'][0]['public_uuid'],
+                'option_id' => (int) $option['id'],
+            ])
+            ->assertStatus(200);
+        (new GameRoundQuestionModel())->update($fixture['question']['id'], [
+            'reveal_until_epoch_ms' => 0,
+            'reveal_until' => '2000-01-01 00:00:00',
+        ]);
+
+        $checkpoint = $this->withSession([])
+            ->get('/api/v1/rooms/' . $fixture['room']['uuid'] . '/state');
+        $checkpoint->assertStatus(200);
+        $checkpointBody = json_decode($checkpoint->getJSON(), true);
+        $this->assertNull($checkpointBody['data']['current_round']);
+        $this->assertSame('ROUND_COMPLETED', $checkpointBody['data']['last_completed_round']['state']);
+
+        $continued = $this->withSession($this->actingAsTeacherOwner(1))
+            ->withBodyFormat('json')
+            ->post('/api/v1/rooms/' . $fixture['room']['uuid'] . '/race-round/continue', []);
+
+        $continued->assertStatus(200);
+        $body = json_decode($continued->getJSON(), true);
+        $this->assertSame(2, $body['data']['current_round']['round_number']);
+        $this->assertSame('QUESTION_ACTIVE', $body['data']['current_round']['current_question']['state']);
+        $this->assertSame('ROUND_CLOSED', $body['data']['last_completed_round']['state']);
+    }
+
     public function testResolveRejectsNonOwnerTeacher(): void
     {
         $fixture = $this->startRace(2);

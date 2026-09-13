@@ -229,6 +229,15 @@ class RoomsController extends BaseController
         });
     }
 
+    public function continueRaceRound(string $roomUuid)
+    {
+        return $this->respond(function () use ($roomUuid): array {
+            (new TenantContext())->assertRoomOwner($roomUuid);
+
+            return (new GameEngine())->continueRaceRound($roomUuid);
+        });
+    }
+
     private function respond(callable $callback)
     {
         try {
