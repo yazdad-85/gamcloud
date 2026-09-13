@@ -58,6 +58,7 @@
     <p>Sisa waktu: <strong data-race-status-deadline>-</strong></p>
     <p>Tim sudah menjawab: <strong data-race-status-answered>-</strong></p>
     <p>Sementara memimpin: <strong data-race-status-leader>-</strong></p>
+    <p>Hasil soal: <span data-race-status-results>-</span></p>
 </section>
 
 <section class="panel roster-panel hidden" data-roster-panel style="margin-top:16px">

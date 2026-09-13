@@ -476,6 +476,8 @@
                 return 'Pertanyaan untuk ' + teamNameByUuid(payload.team_uuid, snapshot);
             case 'answer.resolved':
                 return answerResolvedLabel(payload);
+            case 'race.question_resolved':
+                return raceQuestionResolvedLabel(payload, snapshot);
             case 'tile.special_triggered':
                 return specialEventLabel(payload.effect || {}, payload.team_uuid, snapshot);
             case 'turn.timeout':
@@ -499,6 +501,28 @@
         const team = (snapshot && snapshot.teams || []).find((item) => item.uuid === teamUuid);
 
         return team ? team.name : 'Tim';
+    }
+
+    function raceOutcomeShortLabel(outcome) {
+        if (outcome === 'CORRECT') {
+            return 'Benar';
+        }
+        if (outcome === 'TIMEOUT') {
+            return 'Waktu habis';
+        }
+
+        return 'Salah';
+    }
+
+    function raceQuestionResolvedLabel(payload, snapshot) {
+        const entries = Object.values(payload.movement || {});
+        if (entries.length === 0) {
+            return 'Hasil Quiz Race tersedia.';
+        }
+
+        return 'Hasil Quiz Race: ' + entries.map((entry) => (
+            teamNameByUuid(entry.team_uuid, snapshot) + ' ' + raceOutcomeShortLabel(entry.outcome)
+        )).join(', ');
     }
 
     function answerResolvedLabel(payload) {
@@ -851,6 +875,7 @@
             const deadlineEl = document.querySelector('[data-race-status-deadline]');
             const answeredEl = document.querySelector('[data-race-status-answered]');
             const leaderEl = document.querySelector('[data-race-status-leader]');
+            const resultsEl = document.querySelector('[data-race-status-results]');
 
             if (roundEl) {
                 roundEl.textContent = round ? String(round.round_number) : '-';
@@ -880,6 +905,23 @@
             if (leaderEl) {
                 const sorted = (snapshot.teams || []).slice().sort((a, b) => (b.score - a.score) || (b.position - a.position));
                 leaderEl.textContent = sorted.length > 0 ? sorted[0].name + ' (' + sorted[0].score + ' poin)' : '-';
+            }
+            if (resultsEl) {
+                const movement = raceQuestion && (raceQuestion.state === 'QUESTION_RESOLVED' || raceQuestion.state === 'QUESTION_CLOSED')
+                    ? Object.values(raceQuestion.movement || {})
+                    : [];
+                if (movement.length > 0) {
+                    resultsEl.innerHTML = movement.map((entry) => (
+                        escapeHtml(teamNameByUuid(entry.team_uuid, snapshot))
+                        + ': ' + escapeHtml(raceOutcomeShortLabel(entry.outcome))
+                        + ', posisi ' + Number(entry.from || 0) + ' -> ' + Number(entry.to || 0)
+                        + ', skor +' + Number(entry.score_delta || 0)
+                    )).join('<br>');
+                } else if (raceQuestion && raceQuestion.state === 'QUESTION_ACTIVE') {
+                    resultsEl.textContent = 'Menunggu jawaban tim.';
+                } else {
+                    resultsEl.textContent = '-';
+                }
             }
         }
 
@@ -1107,7 +1149,7 @@
             const anyCorrect = entries.some((entry) => entry.outcome === 'CORRECT');
             const parts = entries.map((entry) => {
                 const name = teamNameByUuid(entry.team_uuid, snapshot);
-                const outcomeLabel = entry.outcome === 'CORRECT' ? 'Benar' : (entry.outcome === 'TIMEOUT' ? 'Waktu habis' : 'Salah');
+                const outcomeLabel = raceOutcomeShortLabel(entry.outcome);
 
                 return name + ': ' + outcomeLabel + (fastestUuids.includes(entry.team_uuid) ? ' ⚡' : '');
             });

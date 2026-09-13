@@ -163,6 +163,25 @@ final class QuizRaceTeamDeviceApiTest extends CIUnitTestCase
         }
         $this->assertGreaterThan(1, $teamsByUuid[$fixture['teams'][0]['public_uuid']]['position']);
         $this->assertSame(1, $teamsByUuid[$fixture['teams'][1]['public_uuid']]['position']);
+
+        $projectorState = $this->withSession([])
+            ->get('/api/v1/rooms/' . $fixture['room']['uuid'] . '/state?t=' . $fixture['room']['projector_token']);
+        $projectorState->assertStatus(200);
+        $projectorBody = json_decode($projectorState->getJSON(), true);
+        $teacherSnapshot = (new GameEngine())->snapshot($fixture['room']['uuid'], null, true);
+
+        $this->assertSame(
+            $question['movement'],
+            $projectorBody['data']['current_round']['current_question']['movement'],
+            'Projector harus menerima hasil Quiz Race yang sama dengan device tim.'
+        );
+        $this->assertSame(
+            $question['movement'],
+            $teacherSnapshot['current_round']['current_question']['movement'],
+            'Control guru harus menerima hasil Quiz Race yang sama dengan device tim.'
+        );
+        $this->assertSame($body['data']['teams'], $projectorBody['data']['teams']);
+        $this->assertSame($body['data']['teams'], $teacherSnapshot['teams']);
     }
 
     public function testResolveRejectsAnonymousRequest(): void
