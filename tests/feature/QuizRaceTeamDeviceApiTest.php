@@ -116,6 +116,55 @@ final class QuizRaceTeamDeviceApiTest extends CIUnitTestCase
         $this->assertSame(1, (new GameRoundQuestionModel())->find($fixture['question']['id'])['answer_count']);
     }
 
+    public function testLastTeamAnswerReturnsResolvedRaceOutcomeAndMovement(): void
+    {
+        $fixture = $this->startRace(2);
+        $correct = $this->correctOption($fixture['question']);
+        $wrong = $this->wrongOption($fixture['question']);
+
+        $first = $this->withSession($this->teamSession($fixture['room']['uuid'], $fixture['teams'][0], $fixture['joinTokens'][0]))
+            ->withHeaders(['Idempotency-Key' => 'feature-test-race-result-1'])
+            ->withBodyFormat('json')
+            ->post('/api/v1/rooms/' . $fixture['room']['uuid'] . '/race-question/answer', [
+                'team_uuid' => $fixture['teams'][0]['public_uuid'],
+                'option_id' => (int) $correct['id'],
+            ]);
+        $second = $this->withSession($this->teamSession($fixture['room']['uuid'], $fixture['teams'][1], $fixture['joinTokens'][1]))
+            ->withHeaders(['Idempotency-Key' => 'feature-test-race-result-2'])
+            ->withBodyFormat('json')
+            ->post('/api/v1/rooms/' . $fixture['room']['uuid'] . '/race-question/answer', [
+                'team_uuid' => $fixture['teams'][1]['public_uuid'],
+                'option_id' => (int) $wrong['id'],
+            ]);
+
+        $first->assertStatus(200);
+        $second->assertStatus(200);
+        $body = json_decode($second->getJSON(), true);
+        $question = $body['data']['current_round']['current_question'];
+        $this->assertSame('QUESTION_RESOLVED', $question['state']);
+
+        $movementByTeam = [];
+        foreach ($question['movement'] as $movement) {
+            $movementByTeam[$movement['team_uuid']] = $movement;
+        }
+
+        $correctMovement = $movementByTeam[$fixture['teams'][0]['public_uuid']];
+        $wrongMovement = $movementByTeam[$fixture['teams'][1]['public_uuid']];
+        $this->assertSame('CORRECT', $correctMovement['outcome']);
+        $this->assertGreaterThan(0, $correctMovement['steps']);
+        $this->assertGreaterThan(0, $correctMovement['score_delta']);
+        $this->assertSame('WRONG', $wrongMovement['outcome']);
+        $this->assertSame(0, $wrongMovement['steps']);
+        $this->assertSame(0, $wrongMovement['score_delta']);
+
+        $teamsByUuid = [];
+        foreach ($body['data']['teams'] as $team) {
+            $teamsByUuid[$team['uuid']] = $team;
+        }
+        $this->assertGreaterThan(1, $teamsByUuid[$fixture['teams'][0]['public_uuid']]['position']);
+        $this->assertSame(1, $teamsByUuid[$fixture['teams'][1]['public_uuid']]['position']);
+    }
+
     public function testResolveRejectsAnonymousRequest(): void
     {
         $fixture = $this->startRace(2);
@@ -228,6 +277,14 @@ final class QuizRaceTeamDeviceApiTest extends CIUnitTestCase
         return (new QuestionOptionModel())
             ->where('question_id', $question['question_id'])
             ->where('is_correct', 1)
+            ->first();
+    }
+
+    private function wrongOption(array $question): array
+    {
+        return (new QuestionOptionModel())
+            ->where('question_id', $question['question_id'])
+            ->where('is_correct', 0)
             ->first();
     }
 

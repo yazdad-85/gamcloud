@@ -456,6 +456,7 @@ class GameEngine
         $roundQuestionId = null;
         $teamId = null;
         $response = null;
+        $shouldResolveAfterCommit = false;
 
         $this->db->transBegin();
         try {
@@ -531,9 +532,16 @@ class GameEngine
                 'response_ms' => max(0, $answeredAtEpochMs - (int) $question['started_at_epoch_ms']),
             ]);
 
+            $answerCountAfterSubmit = (new GameRoundAnswerModel())
+                ->where('round_question_id', $roundQuestionId)
+                ->countAllResults();
+            $shouldResolveAfterCommit = $answerCountAfterSubmit >= count($this->teams((int) $room['id']));
+
             $this->bumpRoom((int) $room['id']);
-            $response = $this->snapshot($room['public_uuid'], allowAdvance: false);
-            $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+            if (! $shouldResolveAfterCommit) {
+                $response = $this->snapshot($room['public_uuid'], allowAdvance: false);
+                $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
+            }
 
             if (! $this->db->transStatus()) {
                 throw new DomainException('Jawaban Quiz Race gagal disimpan secara atomik.');
@@ -558,8 +566,9 @@ class GameEngine
 
         $room = $this->roomByUuid($roomUuid);
         $question = (new GameRoundQuestionModel())->find($roundQuestionId);
-        if ((int) $question['answer_count'] >= count($this->teams((int) $room['id']))) {
-            $this->afterRaceQuestionAnswersComplete($room, $question);
+        if ($shouldResolveAfterCommit) {
+            $response = $this->afterRaceQuestionAnswersComplete($room, $question) ?? $this->snapshot($room['public_uuid'], allowAdvance: false);
+            $this->saveIdempotentResponse($scope, $idempotencyKey, $response);
         }
         $this->recordEvent($room, 'race.answer_submitted', [
             'question_uuid' => $question['public_uuid'],
@@ -588,12 +597,13 @@ class GameEngine
             ->first();
     }
 
-    private function afterRaceQuestionAnswersComplete(array $room, array $question): void
+    private function afterRaceQuestionAnswersComplete(array $room, array $question): ?array
     {
         try {
-            $this->resolveRaceQuestion($room['public_uuid']);
+            return $this->resolveRaceQuestion($room['public_uuid']);
         } catch (DomainException) {
             // A concurrent resolver (polling or teacher force) already claimed this question.
+            return null;
         }
     }
 
