@@ -9,6 +9,7 @@
         <p class="muted"><?= esc($room['display_title'] ?? $room['title']) ?> / PIN <strong><?= esc($room['pin']) ?></strong></p>
     </div>
     <div class="control-actions">
+        <a class="button secondary" href="/teacher/games/<?= esc($room['uuid']) ?>">Kembali</a>
         <button class="button" data-start <?= $room['status'] !== 'LOBBY' ? 'disabled' : '' ?>>Start</button>
         <button class="button secondary" data-pause type="button">Pause</button>
         <button class="button secondary" data-resume type="button">Resume</button>
@@ -36,6 +37,7 @@
     <div class="panel">
         <h2>Status</h2>
         <p>Status: <strong data-room-status><?= esc($room['status']) ?></strong></p>
+        <p class="hidden" data-race-winner-line>🏆 Pemenang: <strong data-race-winner-name></strong></p>
         <p>State version: <strong data-state-version><?= esc((string) $room['state_version']) ?></strong></p>
         <p>Giliran: <strong data-current-team>-</strong></p>
         <p>Mode game: <strong><?= esc($room['mode_label'] ?? $snapshot['mode_state']['label'] ?? $room['game_mode'] ?? 'Ular Tangga Kuis') ?></strong></p>

@@ -37,6 +37,7 @@
                 </div>
             <?php endif ?>
             <p>Status <strong data-room-status><?= esc($room['status']) ?></strong></p>
+            <p class="hidden" data-race-winner-line>🏆 Pemenang: <strong data-race-winner-name></strong></p>
             <p>Giliran <strong data-current-team>-</strong></p>
             <div class="countdown-card">
                 <span>Sisa waktu</span>

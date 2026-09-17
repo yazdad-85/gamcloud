@@ -530,6 +530,24 @@
         return team ? team.name : 'Tim';
     }
 
+    function raceLastFinishedEvent(snapshot) {
+        const events = (snapshot && snapshot.events) || [];
+        for (let i = events.length - 1; i >= 0; i--) {
+            if (events[i].event === 'game.finished') {
+                return events[i].payload || {};
+            }
+        }
+
+        return null;
+    }
+
+    function raceWinnerNames(snapshot) {
+        const payload = raceLastFinishedEvent(snapshot) || {};
+        const winnerUuids = payload.winner_team_uuids || (payload.winner_team_uuid ? [payload.winner_team_uuid] : []);
+
+        return winnerUuids.map((uuid) => teamNameByUuid(uuid, snapshot)).filter(Boolean);
+    }
+
     function raceOutcomeShortLabel(outcome) {
         if (outcome === 'CORRECT') {
             return 'Benar';
@@ -655,6 +673,14 @@
             const current = (snapshot.teams || []).find((team) => team.uuid === snapshot.room.current_team_uuid);
             el.textContent = current ? current.name : '-';
             el.dataset.teamUuid = snapshot.room.current_team_uuid || '';
+        });
+        root.querySelectorAll('[data-race-winner-line]').forEach((el) => {
+            const names = snapshot.room.status === 'FINISHED' ? raceWinnerNames(snapshot) : [];
+            el.classList.toggle('hidden', names.length === 0);
+            const nameEl = el.querySelector('[data-race-winner-name]');
+            if (nameEl) {
+                nameEl.textContent = names.join(', ');
+            }
         });
         updateCountdown(root, snapshot);
         syncProjectorMusic(snapshot);
@@ -1991,17 +2017,6 @@
             }
 
             return 'Jawaban belum tepat.';
-        }
-
-        function raceLastFinishedEvent(snapshot) {
-            const events = snapshot.events || [];
-            for (let i = events.length - 1; i >= 0; i--) {
-                if (events[i].event === 'game.finished') {
-                    return events[i].payload || {};
-                }
-            }
-
-            return null;
         }
 
         function hideRaceStates() {
