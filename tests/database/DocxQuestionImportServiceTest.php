@@ -136,6 +136,19 @@ final class DocxQuestionImportServiceTest extends CIUnitTestCase
         $this->assertIsString($documentXml);
         $this->assertStringContainsString('[TRUE_FALSE]', $documentXml);
         $this->assertStringContainsString('Jawaban: Benar', $documentXml);
+
+        // The template's own instructions document exactly two ways to mark
+        // a correct option: a leading "*", or a separate "Jawaban:"/"Kunci:"
+        // line — never an inline suffix like "(benar)"/"[x]"/"✓" baked into
+        // the option text itself. Every built-in example question should
+        // follow one of the two documented conventions, so a teacher copying
+        // the pattern isn't left guessing (this previously wasn't true for
+        // question 4, which relied on an undocumented "(benar)" suffix).
+        $this->assertStringContainsString('*B. Pilihan kedua', $documentXml);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\((?:benar|correct)\)|\[(?:x|benar|correct)\]|✓/iu',
+            $documentXml
+        );
     }
 
     public function testGeneratedTemplateCanBeImportedBack(): void
@@ -152,6 +165,13 @@ final class DocxQuestionImportServiceTest extends CIUnitTestCase
 
         $this->assertSame(4, $result['imported']);
         $this->assertSame(0, $result['skipped']);
+
+        $hardQuestion = (new QuestionModel())->where('stem', 'Tempel gambar di bawah baris soal ini jika soal membutuhkan gambar.')->first();
+        $this->assertNotNull($hardQuestion);
+        $hardOptions = (new QuestionOptionModel())->where('question_id', $hardQuestion['id'])->orderBy('sort_order')->findAll();
+        $correctHardOptions = array_values(array_filter($hardOptions, static fn (array $option): bool => (int) $option['is_correct'] === 1));
+        $this->assertCount(1, $correctHardOptions);
+        $this->assertSame('B', $correctHardOptions[0]['label']);
     }
 
     public function testImportDocxSupportsWordAutomaticNumberedLists(): void

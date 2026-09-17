@@ -118,7 +118,7 @@ class DocxQuestionTemplateService
             '',
             '4. [HARD] Tempel gambar di bawah baris soal ini jika soal membutuhkan gambar.',
             'A. Pilihan pertama',
-            'B. Pilihan kedua (benar)',
+            '*B. Pilihan kedua',
             'C. Pilihan ketiga',
             'D. Pilihan keempat',
             'E. Pilihan kelima',
