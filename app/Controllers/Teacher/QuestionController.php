@@ -12,6 +12,7 @@ use App\Services\Question\DocxQuestionImportService;
 use App\Services\Question\DocxQuestionTemplateService;
 use App\Services\Question\QuestionBankService;
 use App\Services\Security\TenantContext;
+use CodeIgniter\Exceptions\PageNotFoundException;
 use DomainException;
 use Throwable;
 
@@ -163,6 +164,44 @@ class QuestionController extends BaseController
         }
 
         return redirect()->back()->with('message', 'Soal berhasil dihapus.');
+    }
+
+    public function bulkDelete()
+    {
+        $tenant = new TenantContext();
+        $submittedUuids = (array) $this->request->getPost('question_uuids');
+        $uuids = array_slice(array_values(array_unique(array_filter($submittedUuids, 'is_string'))), 0, 12);
+
+        $questions = [];
+        foreach ($uuids as $uuid) {
+            try {
+                $questions[] = $tenant->assertQuestionOwner($uuid);
+            } catch (PageNotFoundException) {
+                continue;
+            }
+        }
+
+        if ($questions === []) {
+            return redirect()->back()->with('error', 'Tidak ada soal valid yang dipilih untuk dihapus.');
+        }
+
+        try {
+            $result = (new QuestionBankService())->deleteMany($questions);
+        } catch (Throwable $error) {
+            log_message('error', $error->getMessage());
+
+            return redirect()->back()->with('error', 'Soal belum berhasil dihapus.');
+        }
+
+        $message = $result['deleted'] . ' soal berhasil dihapus.';
+        if ($result['skipped'] > 0) {
+            $message .= ' ' . $result['skipped'] . ' soal dilewati karena sedang dipakai game aktif.';
+        }
+
+        $topicFilter = (string) $this->request->getPost('topic_filter');
+        $redirectUrl = $topicFilter === '' ? '/teacher/questions' : '/teacher/questions?topic=' . rawurlencode($topicFilter);
+
+        return redirect()->to($redirectUrl)->with('message', $message);
     }
 
     public function templateDocx()
