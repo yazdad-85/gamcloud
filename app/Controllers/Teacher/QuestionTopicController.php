@@ -7,6 +7,7 @@ use App\Models\QuestionModel;
 use App\Models\QuestionTopicModel;
 use App\Models\TeacherModel;
 use App\Services\Game\Uuid;
+use App\Services\Question\QuestionBankService;
 use App\Services\Security\TenantContext;
 
 class QuestionTopicController extends BaseController
@@ -47,5 +48,25 @@ class QuestionTopicController extends BaseController
         (new QuestionTopicModel())->delete($topic['id']);
 
         return redirect()->to('/teacher/questions')->with('message', 'Topik "' . $topic['name'] . '" dihapus. Soal di dalamnya tetap ada, sekarang jadi Tanpa Topik.');
+    }
+
+    public function destroyAll(string $topicUuid)
+    {
+        $topic = (new TenantContext())->assertQuestionTopicOwner($topicUuid);
+        $result = (new QuestionBankService())->deleteQuestionsInTopic($topic);
+
+        if ($result['topic_deleted']) {
+            return redirect()->to('/teacher/questions')->with(
+                'message',
+                'Topik "' . $topic['name'] . '" dan ' . $result['deleted'] . ' soal di dalamnya berhasil dihapus.'
+            );
+        }
+
+        return redirect()->to('/teacher/questions')->with(
+            'message',
+            $result['deleted'] . ' soal dihapus. ' . $result['skipped']
+                . ' soal dilewati karena sedang dipakai game aktif — topik "' . $topic['name']
+                . '" belum dihapus karena masih berisi ' . $result['skipped'] . ' soal.'
+        );
     }
 }
