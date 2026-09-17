@@ -13,12 +13,14 @@ $difficultyLabels = [
     'HARD' => 'Sulit',
 ];
 $selectedTopicName = 'Semua soal';
+$selectedTopic = null;
 if ($topicFilter === 'none') {
     $selectedTopicName = 'Tanpa topik';
 } elseif ($topicFilter !== '') {
     foreach ($topics as $topic) {
         if ($topic['public_uuid'] === $topicFilter) {
             $selectedTopicName = $topic['name'];
+            $selectedTopic = $topic;
             break;
         }
     }
@@ -180,6 +182,13 @@ Jawaban: Benar</pre>
             </div>
             <?php if ($pagination['total'] > 0): ?>
                 <p class="muted">Menampilkan <?= esc((string) $pagination['from']) ?>-<?= esc((string) $pagination['to']) ?> dari <?= esc((string) $pagination['total']) ?></p>
+            <?php endif ?>
+            <?php if ($selectedTopic !== null): ?>
+                <?php $selectedTopicQuestionCount = (int) ($questionCounts[(string) $selectedTopic['id']] ?? 0); ?>
+                <form method="post" action="/teacher/topics/<?= esc($selectedTopic['public_uuid']) ?>/delete-all" onsubmit="return confirm('Hapus topik ini beserta seluruh soal di dalamnya? Soal yang sedang dipakai game aktif akan dilewati. Tindakan ini tidak bisa dibatalkan.');">
+                    <?= csrf_field() ?>
+                    <button class="button danger-outline" type="submit">Hapus Topik + Semua Soalnya (<?= esc((string) $selectedTopicQuestionCount) ?>)</button>
+                </form>
             <?php endif ?>
         </div>
 
