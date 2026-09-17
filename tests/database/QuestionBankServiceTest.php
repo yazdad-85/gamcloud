@@ -181,6 +181,65 @@ final class QuestionBankServiceTest extends CIUnitTestCase
         $this->assertNotNull((new QuestionModel())->find($activeQuestion['id']));
     }
 
+    public function testDeleteQuestionsInTopicDeletesTopicWhenAllQuestionsAreRemoved(): void
+    {
+        $topicId = $this->topic(1, 'Topik Bulk Kosong');
+        $topic = (new QuestionTopicModel())->find($topicId);
+        $service = new QuestionBankService();
+        $service->create(1, $this->payload($topicId));
+        $service->create(1, $this->payload($topicId));
+
+        $result = $service->deleteQuestionsInTopic($topic);
+
+        $this->assertSame(['deleted' => 2, 'skipped' => 0, 'topic_deleted' => true], $result);
+        $this->assertSame(0, (new QuestionModel())->where('topic_id', $topicId)->countAllResults());
+        $this->assertNull((new QuestionTopicModel())->find($topicId));
+    }
+
+    public function testDeleteQuestionsInTopicKeepsTopicWhenSomeQuestionsAreActive(): void
+    {
+        $topicId = $this->topic(1, 'Topik Bulk Sebagian Aktif');
+        $topic = (new QuestionTopicModel())->find($topicId);
+        $service = new QuestionBankService();
+        $service->create(1, $this->payload($topicId));
+
+        // The race's question pool is scoped to its own isolated topic
+        // (disjoint from $topicId) so GameEngine's random question pick can
+        // never coincidentally select the question we just created above.
+        // Without this, the test is flaky: GameEngine::selectQuestion()
+        // draws from ALL of the teacher's PUBLISHED questions unless a
+        // topic filter narrows the pool, so it could otherwise "pick" our
+        // own already-created question as the race's active one, which
+        // would make the topic end up with only 1 question total instead
+        // of the 2 distinct ones this test requires.
+        $racePoolTopicId = $this->topic(1, 'Topik Bulk Sebagian Aktif Race Pool');
+        $service->create(1, $this->payload($racePoolTopicId));
+
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'CRUD Bulk Topic Active Race', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+            'question_selection' => ['topic_ids' => [$racePoolTopicId]],
+        ])['room'];
+        $engine->joinByPin($room['pin'], 'Tim Bulk Topic');
+        $engine->start($room['uuid']);
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first();
+        $round = (new GameRoundModel())->where('room_id', $storedRoom['id'])->first();
+        $roundQuestion = (new GameRoundQuestionModel())
+            ->where('round_id', $round['id'])
+            ->where('state', 'QUESTION_ACTIVE')
+            ->first();
+        // Move the race's active question into $topicId — this is what
+        // gives the topic its second, currently-blocked question.
+        (new QuestionModel())->update($roundQuestion['question_id'], ['topic_id' => $topicId]);
+
+        $result = $service->deleteQuestionsInTopic($topic);
+
+        $this->assertSame(['deleted' => 1, 'skipped' => 1, 'topic_deleted' => false], $result);
+        $this->assertNotNull((new QuestionTopicModel())->find($topicId));
+        $this->assertSame(1, (new QuestionModel())->where('topic_id', $topicId)->countAllResults());
+    }
+
     public function testUpdateKeepsOptionReferencedByHistoricalRaceAnswer(): void
     {
         $topicId = $this->topic(1, 'CRUD Riwayat Race');

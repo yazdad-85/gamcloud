@@ -148,6 +148,24 @@ class QuestionBankService
         return ['deleted' => $deleted, 'skipped' => $skipped];
     }
 
+    /**
+     * @param array<string,mixed> $topic
+     * @return array{deleted:int,skipped:int,topic_deleted:bool}
+     */
+    public function deleteQuestionsInTopic(array $topic): array
+    {
+        $questions = (new QuestionModel())->where('topic_id', $topic['id'])->findAll();
+        $result = $this->deleteMany($questions);
+
+        $topicDeleted = false;
+        if ($result['skipped'] === 0) {
+            (new QuestionTopicModel())->delete($topic['id']);
+            $topicDeleted = true;
+        }
+
+        return $result + ['topic_deleted' => $topicDeleted];
+    }
+
     private function normalize(int $teacherId, array $input): array
     {
         if ($teacherId < 1 || (new TeacherModel())->find($teacherId) === null) {
