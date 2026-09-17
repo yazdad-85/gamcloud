@@ -28,6 +28,19 @@ use DomainException;
 
 class GameEngine
 {
+    /**
+     * Grace window (ms) applied only to the passive, poll-triggered Quiz Race
+     * auto-resolve. Without it, any device's routine state poll can flip a
+     * question to QUESTION_RESOLVING the instant the deadline is crossed,
+     * winning a race against a team's own answer submission that was sent
+     * before the deadline but is still in flight (network/server latency).
+     * That race stamps the team's real answer as TIMEOUT even though they
+     * answered in time. Force-resolve (teacher-initiated) and the
+     * "all teams answered" resolve path are unaffected — this only delays
+     * the passive/automatic timeout sweep by a short buffer.
+     */
+    public const RACE_AUTO_RESOLVE_GRACE_MS = 1500;
+
     private BaseConnection $db;
     private GameConfig $config;
     private GameModeCatalog $modes;
@@ -971,7 +984,11 @@ class GameEngine
         }
 
         $question = $this->activeRaceQuestion((int) $round['id']);
-        if ($question === null || $this->currentEpochMs() < (int) $question['deadline_epoch_ms']) {
+        if ($question === null) {
+            return;
+        }
+        $autoResolveAtEpochMs = (int) $question['deadline_epoch_ms'] + self::RACE_AUTO_RESOLVE_GRACE_MS;
+        if ($this->currentEpochMs() < $autoResolveAtEpochMs) {
             return;
         }
 

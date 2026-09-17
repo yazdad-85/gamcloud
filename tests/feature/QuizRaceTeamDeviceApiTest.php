@@ -188,6 +188,48 @@ final class QuizRaceTeamDeviceApiTest extends CIUnitTestCase
         $this->assertSame($body['data']['teams'], $teacherSnapshot['teams']);
     }
 
+    public function testPassiveStatePollDoesNotAutoResolveJustAfterDeadline(): void
+    {
+        $fixture = $this->startRace(2);
+
+        // Simulate the deadline having crossed a moment ago (e.g. while a team's
+        // own answer request is still in flight to the server).
+        (new GameRoundQuestionModel())->update($fixture['question']['id'], [
+            'deadline_epoch_ms' => (int) floor(microtime(true) * 1000) - 200,
+        ]);
+
+        // A routine state poll from any other device (projector, teammate,
+        // teacher panel) must not instantly stamp everyone as TIMEOUT the
+        // moment the deadline is crossed — that races against in-flight
+        // answers and falsely reports "Waktu habis" for teams that did answer.
+        $polled = (new GameEngine())->snapshot($fixture['room']['uuid']);
+        $question = $polled['current_round']['current_question'];
+        $this->assertSame('QUESTION_ACTIVE', $question['state']);
+        $this->assertSame(
+            0,
+            (new GameRoundQuestionModel())->find($fixture['question']['id'])['answer_count'],
+            'Auto-resolve must not have fired yet.'
+        );
+    }
+
+    public function testPassiveStatePollAutoResolvesAfterGraceWindowElapses(): void
+    {
+        $fixture = $this->startRace(2);
+
+        // Well past the deadline and past the grace buffer: nobody answered,
+        // so the passive poll should still correctly time the question out.
+        (new GameRoundQuestionModel())->update($fixture['question']['id'], [
+            'deadline_epoch_ms' => (int) floor(microtime(true) * 1000) - 1600,
+        ]);
+
+        $polled = (new GameEngine())->snapshot($fixture['room']['uuid']);
+        $question = $polled['current_round']['current_question'];
+        $this->assertSame('QUESTION_RESOLVED', $question['state']);
+        foreach ($question['movement'] as $movement) {
+            $this->assertSame('TIMEOUT', $movement['outcome']);
+        }
+    }
+
     public function testResolveRejectsAnonymousRequest(): void
     {
         $fixture = $this->startRace(2);

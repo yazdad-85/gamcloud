@@ -740,7 +740,20 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $deadlineEpochMs = $startedAtEpochMs + 20000;
         $this->setQuestionWindow($fixture['question']['id'], $startedAtEpochMs, $deadlineEpochMs);
 
-        $engine = $this->engineAt([$deadlineEpochMs, $deadlineEpochMs + 50, $deadlineEpochMs + 50]);
+        // A passive poll right at the deadline (e.g. from the projector or a
+        // teammate's device) must not instantly time everyone out — that
+        // would race against a team's own answer still in flight to the
+        // server. It only resolves once the grace buffer has also elapsed.
+        $atDeadline = $this->engineAt([$deadlineEpochMs, $deadlineEpochMs]);
+        $snapshotAtDeadline = $atDeadline->snapshot($fixture['room']['uuid']);
+        $this->assertSame(
+            'QUESTION_ACTIVE',
+            $snapshotAtDeadline['current_round']['current_question']['state'],
+            'Auto-resolve must wait past the grace window, not fire the instant the deadline is crossed.'
+        );
+
+        $afterGrace = $deadlineEpochMs + GameEngine::RACE_AUTO_RESOLVE_GRACE_MS + 50;
+        $engine = $this->engineAt([$afterGrace, $afterGrace, $afterGrace]);
         $snapshot = $engine->snapshot($fixture['room']['uuid']);
         $question = (new GameRoundQuestionModel())->find($fixture['question']['id']);
 
