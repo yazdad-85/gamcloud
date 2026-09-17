@@ -192,6 +192,24 @@ Jawaban: Benar</pre>
             <?php endif ?>
         </div>
 
+        <form id="bulk-delete-form" method="post" action="/teacher/questions/bulk-delete" onsubmit="return confirm('Hapus soal yang dipilih? Soal yang sedang dipakai game aktif akan dilewati.');">
+            <?= csrf_field() ?>
+            <input type="hidden" name="topic_filter" value="<?= esc($topicFilter) ?>">
+        </form>
+
+        <?php if ($questions !== []): ?>
+            <div class="question-bulk-toolbar">
+                <label class="question-select-all">
+                    <input type="checkbox" data-select-all-questions>
+                    <span>Pilih semua di halaman ini</span>
+                </label>
+                <div class="bulk-action-bar hidden" data-bulk-bar>
+                    <span data-bulk-count>0 soal dipilih</span>
+                    <button class="button danger-outline small-button" type="submit" form="bulk-delete-form">Hapus Terpilih</button>
+                </div>
+            </div>
+        <?php endif ?>
+
         <section class="question-list" aria-label="Daftar soal">
             <?php foreach ($questions as $question): ?>
                 <?php
@@ -202,6 +220,9 @@ Jawaban: Benar</pre>
                 ?>
                 <article class="question-row">
                     <div class="question-row-main">
+                        <label class="question-select">
+                            <input type="checkbox" name="question_uuids[]" value="<?= esc($question['public_uuid']) ?>" form="bulk-delete-form" data-question-checkbox aria-label="Pilih soal ini">
+                        </label>
                         <div class="question-index" aria-hidden="true"><?= esc((string) $questionNumber) ?></div>
                         <div class="question-row-copy">
                             <div class="question-badges">
@@ -288,4 +309,43 @@ Jawaban: Benar</pre>
         <?php endif ?>
     </section>
 </div>
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+(function () {
+    var checkboxes = Array.prototype.slice.call(document.querySelectorAll('[data-question-checkbox]'));
+    var selectAll = document.querySelector('[data-select-all-questions]');
+    var bulkBar = document.querySelector('[data-bulk-bar]');
+    var bulkCount = document.querySelector('[data-bulk-count]');
+
+    function updateBulkBar() {
+        var checkedCount = checkboxes.filter(function (box) { return box.checked; }).length;
+        if (bulkCount) {
+            bulkCount.textContent = checkedCount + ' soal dipilih';
+        }
+        if (bulkBar) {
+            bulkBar.classList.toggle('hidden', checkedCount === 0);
+        }
+        if (selectAll) {
+            selectAll.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+        }
+    }
+
+    checkboxes.forEach(function (box) {
+        box.addEventListener('change', updateBulkBar);
+    });
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            checkboxes.forEach(function (box) {
+                box.checked = selectAll.checked;
+            });
+            updateBulkBar();
+        });
+    }
+
+    updateBulkBar();
+})();
+</script>
 <?= $this->endSection() ?>
