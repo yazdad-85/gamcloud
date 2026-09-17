@@ -9,6 +9,7 @@ use App\Models\TeacherModel;
 use App\Services\Game\Uuid;
 use App\Services\Question\QuestionBankService;
 use App\Services\Security\TenantContext;
+use Throwable;
 
 class QuestionTopicController extends BaseController
 {
@@ -53,7 +54,14 @@ class QuestionTopicController extends BaseController
     public function destroyAll(string $topicUuid)
     {
         $topic = (new TenantContext())->assertQuestionTopicOwner($topicUuid);
-        $result = (new QuestionBankService())->deleteQuestionsInTopic($topic);
+
+        try {
+            $result = (new QuestionBankService())->deleteQuestionsInTopic($topic);
+        } catch (Throwable $error) {
+            log_message('error', $error->getMessage());
+
+            return redirect()->to('/teacher/questions')->with('error', 'Topik belum berhasil dihapus.');
+        }
 
         if ($result['topic_deleted']) {
             return redirect()->to('/teacher/questions')->with(
@@ -64,7 +72,7 @@ class QuestionTopicController extends BaseController
 
         return redirect()->to('/teacher/questions')->with(
             'message',
-            $result['deleted'] . ' soal dihapus. ' . $result['skipped']
+            $result['deleted'] . ' soal berhasil dihapus. ' . $result['skipped']
                 . ' soal dilewati karena sedang dipakai game aktif — topik "' . $topic['name']
                 . '" belum dihapus karena masih berisi ' . $result['skipped'] . ' soal.'
         );
