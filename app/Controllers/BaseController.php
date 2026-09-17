@@ -42,4 +42,15 @@ abstract class BaseController extends Controller
         // Preload any models, libraries, etc, here.
         // $this->session = service('session');
     }
+
+    protected function preventRealtimeCache(): void
+    {
+        $this->response
+            ->removeHeader('Cache-Control')
+            ->setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->removeHeader('Pragma')
+            ->setHeader('Pragma', 'no-cache')
+            ->removeHeader('Expires')
+            ->setHeader('Expires', '0');
+    }
 }

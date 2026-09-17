@@ -11,6 +11,8 @@ class ControllerController extends BaseController
 {
     public function show(string $roomUuid): string
     {
+        $this->preventRealtimeCache();
+
         $teamUuid = (string) ($this->request->getGet('team') ?: (new TeamSessionService())->currentTeamUuid($roomUuid));
 
         try {

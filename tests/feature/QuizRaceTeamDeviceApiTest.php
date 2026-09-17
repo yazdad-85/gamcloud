@@ -45,6 +45,7 @@ final class QuizRaceTeamDeviceApiTest extends CIUnitTestCase
             ]);
 
         $result->assertStatus(200);
+        $result->assertHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $body = json_decode($result->getJSON(), true);
         $this->assertTrue($body['ok']);
         $this->assertIsArray($body['data']);
@@ -169,6 +170,7 @@ final class QuizRaceTeamDeviceApiTest extends CIUnitTestCase
         $projectorState = $this->withSession([])
             ->get('/api/v1/rooms/' . $fixture['room']['uuid'] . '/state?t=' . $fixture['room']['projector_token']);
         $projectorState->assertStatus(200);
+        $projectorState->assertHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $projectorBody = json_decode($projectorState->getJSON(), true);
         $teacherSnapshot = (new GameEngine())->snapshot($fixture['room']['uuid'], null, true);
 

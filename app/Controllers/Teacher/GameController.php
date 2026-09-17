@@ -172,6 +172,8 @@ class GameController extends BaseController
 
     public function show(string $roomUuid): string
     {
+        $this->preventRealtimeCache();
+
         (new TenantContext())->assertRoomOwner($roomUuid);
 
         return view('teacher/games/show', [
@@ -181,6 +183,8 @@ class GameController extends BaseController
 
     public function control(string $roomUuid): string
     {
+        $this->preventRealtimeCache();
+
         (new TenantContext())->assertRoomOwner($roomUuid);
 
         return view('teacher/games/control', [

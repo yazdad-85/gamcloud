@@ -202,16 +202,19 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
 
         $detail = $this->get('/teacher/games/' . $room['uuid']);
         $detail->assertStatus(200);
+        $detail->assertHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $this->assertStringContainsString('data-join-qr', $detail->getBody());
         $this->assertStringContainsString('data-qr-value="' . esc($joinUrl) . '"', $detail->getBody());
 
         $control = $this->get('/teacher/games/' . $room['uuid'] . '/control');
         $control->assertStatus(200);
+        $control->assertHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $this->assertStringContainsString('data-join-qr', $control->getBody());
         $this->assertStringContainsString('data-qr-value="' . esc($joinUrl) . '"', $control->getBody());
 
         $projector = $this->get('/game/' . $room['uuid'] . '/projector?t=' . $room['projector_token']);
         $projector->assertStatus(200);
+        $projector->assertHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $this->assertStringContainsString('data-join-qr', $projector->getBody());
         $this->assertStringContainsString('data-qr-value="' . esc($joinUrl) . '"', $projector->getBody());
     }

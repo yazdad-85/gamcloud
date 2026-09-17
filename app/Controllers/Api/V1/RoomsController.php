@@ -240,6 +240,8 @@ class RoomsController extends BaseController
 
     private function respond(callable $callback)
     {
+        $this->preventRealtimeCache();
+
         try {
             return $this->response->setJSON([
                 'ok' => true,

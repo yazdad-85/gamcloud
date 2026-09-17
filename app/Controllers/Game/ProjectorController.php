@@ -11,6 +11,8 @@ class ProjectorController extends BaseController
 {
     public function show(string $roomUuid): string
     {
+        $this->preventRealtimeCache();
+
         $token = trim((string) $this->request->getGet('t'));
         $room  = (new GameRoomModel())->where('public_uuid', $roomUuid)->first();
         $engine = new GameEngine();
