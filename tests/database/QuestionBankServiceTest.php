@@ -139,6 +139,48 @@ final class QuestionBankServiceTest extends CIUnitTestCase
         (new QuestionBankService())->delete($question);
     }
 
+    public function testDeleteManyDeletesEligibleQuestionsAndSkipsActiveOnes(): void
+    {
+        $topicId = $this->topic(1, 'CRUD Bulk Delete');
+        $service = new QuestionBankService();
+        $questionA = $service->create(1, $this->payload($topicId));
+        $questionB = $service->create(1, $this->payload($topicId));
+
+        // Race question pool is deliberately scoped to its own topic
+        // (disjoint from $topicId) so the engine's random pick can never
+        // coincidentally select $questionA or $questionB as the "active"
+        // question — without this, the test is flaky (verified: ~13%
+        // failure rate in isolation) because GameEngine::selectQuestion()
+        // draws from ALL of a teacher's PUBLISHED questions unless a topic
+        // filter narrows the pool.
+        $racePoolTopicId = $this->topic(1, 'CRUD Bulk Delete Race Pool');
+        $raceQuestionRow = $service->create(1, $this->payload($racePoolTopicId));
+
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'CRUD Bulk Delete Active Race', [
+            'game_mode' => 'QUIZ_RACE',
+            'participation_mode' => 'TEAM_DEVICE',
+            'question_selection' => ['topic_ids' => [$racePoolTopicId]],
+        ])['room'];
+        $engine->joinByPin($room['pin'], 'Tim Bulk Delete');
+        $engine->start($room['uuid']);
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $room['uuid'])->first();
+        $round = (new GameRoundModel())->where('room_id', $storedRoom['id'])->first();
+        $roundQuestion = (new GameRoundQuestionModel())
+            ->where('round_id', $round['id'])
+            ->where('state', 'QUESTION_ACTIVE')
+            ->first();
+        $activeQuestion = (new QuestionModel())->find($roundQuestion['question_id']);
+        $this->assertSame($raceQuestionRow['id'], $activeQuestion['id']);
+
+        $result = $service->deleteMany([$questionA, $questionB, $activeQuestion]);
+
+        $this->assertSame(['deleted' => 2, 'skipped' => 1], $result);
+        $this->assertNull((new QuestionModel())->find($questionA['id']));
+        $this->assertNull((new QuestionModel())->find($questionB['id']));
+        $this->assertNotNull((new QuestionModel())->find($activeQuestion['id']));
+    }
+
     public function testUpdateKeepsOptionReferencedByHistoricalRaceAnswer(): void
     {
         $topicId = $this->topic(1, 'CRUD Riwayat Race');

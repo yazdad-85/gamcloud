@@ -128,6 +128,26 @@ class QuestionBankService
         (new QuestionModel())->delete($question['id']);
     }
 
+    /**
+     * @param list<array<string,mixed>> $questions
+     * @return array{deleted:int,skipped:int}
+     */
+    public function deleteMany(array $questions): array
+    {
+        $deleted = 0;
+        $skipped = 0;
+        foreach ($questions as $question) {
+            try {
+                $this->delete($question);
+                $deleted++;
+            } catch (DomainException) {
+                $skipped++;
+            }
+        }
+
+        return ['deleted' => $deleted, 'skipped' => $skipped];
+    }
+
     private function normalize(int $teacherId, array $input): array
     {
         if ($teacherId < 1 || (new TeacherModel())->find($teacherId) === null) {
