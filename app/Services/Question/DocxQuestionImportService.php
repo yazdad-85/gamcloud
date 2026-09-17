@@ -156,40 +156,102 @@ class DocxQuestionImportService
         $paragraphs = [];
         $numberingCounters = [];
         foreach ($xpath->query('//w:p') ?: [] as $paragraph) {
-            $text = '';
-            foreach ($xpath->query('.//w:t | .//w:tab | .//w:br', $paragraph) ?: [] as $node) {
-                $text .= $node->localName === 't' ? $node->textContent : ' ';
+            if (! $paragraph instanceof \DOMElement) {
+                continue;
             }
 
-            $images = [];
-            foreach ($xpath->query('.//@r:embed', $paragraph) ?: [] as $embed) {
-                $relationshipId = $embed->nodeValue;
-                if (! isset($relationships[$relationshipId])) {
-                    continue;
-                }
-
-                $url = $this->saveImage($zip, $relationships[$relationshipId], $teacherId, $batchUuid);
-                if ($url !== null) {
-                    $images[] = $url;
+            $segments = $this->paragraphSegments($paragraph, $relationships, $zip, $teacherId, $batchUuid);
+            $firstTextIndex = null;
+            foreach ($segments as $index => $segment) {
+                if ($segment['text'] !== '') {
+                    $firstTextIndex = $index;
+                    break;
                 }
             }
 
-            $text = $this->normalizeText($text);
-            $prefix = $paragraph instanceof \DOMElement
-                ? $this->numberingPrefix($paragraph, $xpath, $numbering, $numberingCounters, $text)
-                : '';
-            if ($prefix !== '') {
-                $text = $this->normalizeText($prefix . $text);
+            $firstText = $firstTextIndex === null ? '' : $segments[$firstTextIndex]['text'];
+            $prefix = $this->numberingPrefix($paragraph, $xpath, $numbering, $numberingCounters, $firstText);
+            if ($prefix !== '' && $firstTextIndex !== null) {
+                $segments[$firstTextIndex]['text'] = $this->normalizeText($prefix . $segments[$firstTextIndex]['text']);
             }
-            if ($text !== '' || $images !== []) {
-                $paragraphs[] = [
-                    'text' => $text,
-                    'images' => array_values(array_unique($images)),
-                ];
+
+            foreach ($segments as $segment) {
+                if ($segment['text'] !== '' || $segment['images'] !== []) {
+                    $paragraphs[] = $segment;
+                }
             }
         }
 
         return $paragraphs;
+    }
+
+    private function paragraphSegments(\DOMElement $paragraph, array $relationships, ZipArchive $zip, int $teacherId, string $batchUuid): array
+    {
+        $segments = [];
+        $current = [
+            'text' => '',
+            'images' => [],
+        ];
+
+        $walk = function (\DOMNode $node) use (&$walk, &$segments, &$current, $relationships, $zip, $teacherId, $batchUuid): void {
+            if ($node instanceof \DOMElement) {
+                if ($node->namespaceURI === 'http://schemas.openxmlformats.org/wordprocessingml/2006/main') {
+                    if ($node->localName === 't') {
+                        $current['text'] .= $node->textContent;
+
+                        return;
+                    }
+
+                    if ($node->localName === 'tab') {
+                        $current['text'] .= ' ';
+
+                        return;
+                    }
+
+                    if ($node->localName === 'br' || $node->localName === 'cr') {
+                        $this->appendParagraphSegment($segments, $current);
+
+                        return;
+                    }
+                }
+
+                $relationshipId = $node->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed');
+                if ($relationshipId !== '' && isset($relationships[$relationshipId])) {
+                    $url = $this->saveImage($zip, $relationships[$relationshipId], $teacherId, $batchUuid);
+                    if ($url !== null) {
+                        $current['images'][] = $url;
+                    }
+                }
+            }
+
+            foreach ($node->childNodes as $child) {
+                $walk($child);
+            }
+        };
+
+        foreach ($paragraph->childNodes as $child) {
+            $walk($child);
+        }
+        $this->appendParagraphSegment($segments, $current);
+
+        return $segments;
+    }
+
+    private function appendParagraphSegment(array &$segments, array &$current): void
+    {
+        $segment = [
+            'text' => $this->normalizeText((string) $current['text']),
+            'images' => array_values(array_unique($current['images'])),
+        ];
+
+        if ($segment['text'] !== '' || $segment['images'] !== []) {
+            $segments[] = $segment;
+        }
+
+        $current = [
+            'text' => '',
+            'images' => [],
+        ];
     }
 
     private function numberingPrefix(\DOMElement $paragraph, \DOMXPath $xpath, array $numbering, array &$counters, string $text): string

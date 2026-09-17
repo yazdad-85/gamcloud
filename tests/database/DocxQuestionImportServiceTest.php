@@ -173,6 +173,31 @@ final class DocxQuestionImportServiceTest extends CIUnitTestCase
         $this->assertSame('Mars', $options[1]['body']);
     }
 
+    public function testImportDocxSupportsLineBreaksInsideNumberedQuestionParagraphs(): void
+    {
+        $path = $this->makeNumberedLineBreakDocxFixture();
+        $result = (new DocxQuestionImportService())->import($path, 1);
+        $this->pathsToClean[] = rtrim(FCPATH, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR
+            . 'uploads/question-imports/1/' . $result['batch_uuid'];
+
+        $this->assertSame(2, $result['imported']);
+        $this->assertSame(0, $result['skipped']);
+
+        $planet = (new QuestionModel())->where('stem', 'Planet merah adalah ...')->first();
+        $capital = (new QuestionModel())->where('stem', 'Ibu kota Indonesia saat ini adalah ...')->first();
+
+        $this->assertNotNull($planet);
+        $this->assertNotNull($capital);
+
+        $planetOptions = (new QuestionOptionModel())->where('question_id', $planet['id'])->orderBy('sort_order')->findAll();
+        $capitalOptions = (new QuestionOptionModel())->where('question_id', $capital['id'])->orderBy('sort_order')->findAll();
+
+        $this->assertCount(3, $planetOptions);
+        $this->assertCount(3, $capitalOptions);
+        $this->assertSame('B', array_values(array_filter($planetOptions, static fn (array $option): bool => (int) $option['is_correct'] === 1))[0]['label']);
+        $this->assertSame('C', array_values(array_filter($capitalOptions, static fn (array $option): bool => (int) $option['is_correct'] === 1))[0]['label']);
+    }
+
     private function makeDocxFixture(): string
     {
         $path = tempnam(sys_get_temp_dir(), 'docx_import_');
@@ -268,6 +293,49 @@ final class DocxQuestionImportServiceTest extends CIUnitTestCase
     <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="21"/></w:numPr></w:pPr><w:r><w:t>Bandung</w:t></w:r></w:p>
     <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="21"/></w:numPr></w:pPr><w:r><w:t>Jakarta</w:t></w:r></w:p>
     <w:p><w:r><w:t>Kunci: B</w:t></w:r></w:p>
+  </w:body>
+</w:document>');
+        $zip->close();
+
+        return $path;
+    }
+
+    private function makeNumberedLineBreakDocxFixture(): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'docx_numbered_break_import_');
+        $this->pathsToClean[] = $path;
+
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
+</Types>');
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>');
+        $zip->addFromString('word/_rels/document.xml.rels', '<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdNum" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
+</Relationships>');
+        $zip->addFromString('word/numbering.xml', '<?xml version="1.0" encoding="UTF-8"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="1">
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="10"><w:abstractNumId w:val="1"/></w:num>
+</w:numbering>');
+        $zip->addFromString('word/document.xml', '<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Template dengan nomor otomatis dan line break.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="10"/></w:numPr></w:pPr><w:r><w:t>[EASY] Planet merah adalah ...</w:t></w:r><w:r><w:br/><w:t>A. Venus</w:t></w:r><w:r><w:br/><w:t>B. Mars</w:t></w:r><w:r><w:br/><w:t>C. Jupiter</w:t></w:r><w:r><w:br/><w:t>Jawaban: B</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="10"/></w:numPr></w:pPr><w:r><w:t>[MEDIUM] Ibu kota Indonesia saat ini adalah ...</w:t></w:r><w:r><w:br/><w:t>A. Bandung</w:t></w:r><w:r><w:br/><w:t>B. Surabaya</w:t></w:r><w:r><w:br/><w:t>C. Jakarta</w:t></w:r><w:r><w:br/><w:t>Jawaban: C</w:t></w:r></w:p>
   </w:body>
 </w:document>');
         $zip->close();
