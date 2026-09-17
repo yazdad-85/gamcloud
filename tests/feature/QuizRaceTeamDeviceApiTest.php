@@ -49,6 +49,8 @@ final class QuizRaceTeamDeviceApiTest extends CIUnitTestCase
         $this->assertTrue($body['ok']);
         $this->assertIsArray($body['data']);
         $this->assertSame($fixture['room']['uuid'], $body['data']['room']['uuid']);
+        $this->assertIsInt($body['data']['server_epoch_ms']);
+        $this->assertGreaterThan(0, $body['data']['server_epoch_ms']);
         $this->assertArrayHasKey('request_id', $body['meta']);
     }
 

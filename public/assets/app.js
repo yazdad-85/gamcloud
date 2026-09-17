@@ -35,6 +35,33 @@
             });
     }
 
+    function markSnapshotReceived(snapshot) {
+        if (snapshot && typeof snapshot === 'object') {
+            snapshot._client_received_epoch_ms = Date.now();
+        }
+
+        return snapshot;
+    }
+
+    function serverNowMs(snapshot) {
+        const serverEpochMs = Number(snapshot && snapshot.server_epoch_ms || 0);
+        const receivedEpochMs = Number(snapshot && snapshot._client_received_epoch_ms || 0);
+        if (serverEpochMs > 0 && receivedEpochMs > 0) {
+            return serverEpochMs + Math.max(0, Date.now() - receivedEpochMs);
+        }
+
+        return Date.now();
+    }
+
+    function secondsUntil(snapshot, epochMs) {
+        const deadline = Number(epochMs || 0);
+        if (!deadline) {
+            return null;
+        }
+
+        return Math.max(0, Math.ceil((deadline - serverNowMs(snapshot)) / 1000));
+    }
+
     function orderedTiles(total) {
         const rows = [];
         for (let row = 9; row >= 0; row--) {
@@ -699,7 +726,7 @@
         if (!deadline) {
             return {label: '-', remaining: null, percent: 0};
         }
-        const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+        const remaining = secondsUntil(snapshot, deadline);
         const total = Math.max(1, Number(snapshot.room.question_time_seconds || turn.question && turn.question.time_limit_seconds || 30));
 
         return {
@@ -725,7 +752,7 @@
 
         const question = snapshot.current_round && snapshot.current_round.current_question;
         if (question && question.state === 'QUESTION_ACTIVE' && question.deadline_epoch_ms) {
-            const remaining = Math.max(0, Math.ceil((Number(question.deadline_epoch_ms) - Date.now()) / 1000));
+            const remaining = secondsUntil(snapshot, question.deadline_epoch_ms);
             if (remaining === 0) {
                 return 'race:' + question.uuid;
             }
@@ -735,7 +762,7 @@
     }
 
     function createRuntime(config) {
-        let snapshot = config.snapshot;
+        let snapshot = markSnapshotReceived(config.snapshot);
         const root = document;
         let autoRefreshKey = null;
         let autoRefreshBusy = false;
@@ -753,6 +780,7 @@
                 : '';
             return jsonFetch('/api/v1/rooms/' + config.roomUuid + '/state' + tokenQuery)
                 .then((next) => {
+                    markSnapshotReceived(next);
                     if (!snapshot || next.room.state_version >= snapshot.room.state_version) {
                         snapshot = next;
                         draw();
@@ -914,7 +942,7 @@
             }
             if (deadlineEl) {
                 if (raceQuestion && raceQuestion.state === 'QUESTION_ACTIVE' && raceQuestion.deadline_epoch_ms) {
-                    const remaining = Math.max(0, Math.ceil((Number(raceQuestion.deadline_epoch_ms) - Date.now()) / 1000));
+                    const remaining = secondsUntil(snapshot, raceQuestion.deadline_epoch_ms);
                     deadlineEl.textContent = remaining > 0 ? remaining + ' detik' : 'Waktu habis';
                 } else {
                     deadlineEl.textContent = '-';
@@ -2116,8 +2144,9 @@
             const alreadyAnswered = Boolean(myAnswer && myAnswer.answered);
 
             if (question.state === 'QUESTION_ACTIVE') {
+                const remaining = secondsUntil(snapshot, question.deadline_epoch_ms || 0);
+                const timeExpired = remaining === 0;
                 if (raceCountdown) {
-                    const remaining = Math.max(0, Math.ceil((Number(question.deadline_epoch_ms || 0) - Date.now()) / 1000));
                     raceCountdown.textContent = remaining > 0 ? remaining + ' detik' : 'Waktu habis';
                 }
                 if (alreadyAnswered) {
@@ -2143,7 +2172,7 @@
                         media.innerHTML = mediaHtml(question.question.media, 'question-player-media');
                     }
                     raceOptionList.innerHTML = question.question.options.map((option) => (
-                        '<button class="answer-button' + (String(option.id) === String(pendingRaceConfirmOptionId) ? ' is-selected' : '') + '" data-option-id="' + option.id + '"' + (isRaceAnswering ? ' disabled' : '') + '>' +
+                        '<button class="answer-button' + (String(option.id) === String(pendingRaceConfirmOptionId) ? ' is-selected' : '') + '" data-option-id="' + option.id + '"' + (isRaceAnswering || timeExpired ? ' disabled' : '') + '>' +
                         '<strong>' + escapeHtml(option.label) + '</strong>' +
                         '<span>' + escapeHtml(option.body) + '</span>' +
                         mediaHtml(option.media, 'option-player-media') +
@@ -2307,6 +2336,10 @@
                 const snapshot = runtime.getSnapshot();
                 const question = snapshot.current_round && snapshot.current_round.current_question;
                 if (!question) {
+                    return;
+                }
+                if (secondsUntil(snapshot, question.deadline_epoch_ms || 0) === 0) {
+                    runtime.setError('Waktu menjawab sudah habis.');
                     return;
                 }
                 isRaceAnswering = true;

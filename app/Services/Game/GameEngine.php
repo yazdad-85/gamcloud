@@ -1371,6 +1371,11 @@ class GameEngine
         return (int) floor(microtime(true) * 1000);
     }
 
+    protected function snapshotEpochMs(): int
+    {
+        return (int) floor(microtime(true) * 1000);
+    }
+
     public function pause(string $roomUuid): array
     {
         $room = $this->roomByUuid($roomUuid);
@@ -2425,6 +2430,7 @@ class GameEngine
         $includePin = $forOwner || $this->isValidProjectorToken($room, $projectorToken);
 
         return [
+            'server_epoch_ms' => $this->snapshotEpochMs(),
             'room' => $this->publicRoom($room, $includePin, $forOwner),
             'question_bank' => $this->questionBankSummary(
                 (int) $room['teacher_id'],
