@@ -974,6 +974,7 @@ class GameEngine
 
         $this->advanceExpiredRaceQuestionIfNeeded($room);
         $this->advanceResolvedRaceQuestionIfNeeded((int) $room['id']);
+        $this->advanceCompletedFinalRaceRoundIfNeeded((int) $room['id']);
     }
 
     private function advanceExpiredRaceQuestionIfNeeded(array $room): void
@@ -1258,6 +1259,53 @@ class GameEngine
         }
 
         return $this->snapshot($roomUuid, allowAdvance: false);
+    }
+
+    /**
+     * When the round that just finished its checkpoint reveal was the last
+     * one configured for this room (no next entry in the round allocation),
+     * there is nothing left for the teacher to decide — finish the race
+     * automatically instead of waiting for a "Lanjut Ronde" click that only
+     * makes sense between rounds. If more rounds ARE configured, this is a
+     * no-op and the teacher's manual continueRaceRound() stays required,
+     * preserving the pacing control that feature was built for.
+     */
+    private function advanceCompletedFinalRaceRoundIfNeeded(int $roomId): void
+    {
+        $round = (new GameRoundModel())
+            ->where('room_id', $roomId)
+            ->where('state', 'ROUND_COMPLETED')
+            ->orderBy('round_number', 'DESC')
+            ->first();
+        if ($round === null || $this->currentEpochMs() < (int) $round['reveal_until_epoch_ms']) {
+            return;
+        }
+
+        $room = $this->roomById($roomId);
+        $allocation = $this->raceRounds->normalizeAllocation($room['race_round_question_counts_json'] ?? null);
+        $nextRoundNumber = (int) $round['round_number'] + 1;
+        if (isset($allocation[$nextRoundNumber - 1])) {
+            return;
+        }
+
+        $this->db->table('game_rounds')
+            ->set('state', 'ROUND_CLOSED')
+            ->where('id', $round['id'])
+            ->where('state', 'ROUND_COMPLETED')
+            ->update();
+        if ($this->db->affectedRows() !== 1) {
+            return;
+        }
+
+        $this->bumpRoom($roomId);
+        $room = $this->roomById($roomId);
+
+        try {
+            $this->finishRaceByQuestionLimit($room);
+        } catch (DomainException) {
+            // A concurrent poll or the teacher's own continue click already
+            // finished the race first.
+        }
     }
 
     private function startNextRaceRound(array $room, int $roundNumber): void

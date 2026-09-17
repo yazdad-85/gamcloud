@@ -874,6 +874,63 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
         $this->assertSame('QUESTION_ACTIVE', $firstQuestionOfRound2['state']);
     }
 
+    public function testAutoFinishesAfterLastOfTwoConfiguredRoundsWithoutRequiringContinue(): void
+    {
+        // Teacher configured exactly 2 rounds (2 questions then 1, the
+        // minimum total the allocation validator allows). Round 1 completing
+        // must still wait for the teacher's "Lanjut Ronde" (there IS a round
+        // 2 to continue into), but round 2 completing must finish the race
+        // on its own — there's nothing left to continue into, so the teacher
+        // shouldn't have to click anything.
+        $fixture = $this->startAnswerRace(1, ['race_round_question_counts_json' => [2, 1]]);
+        $correct = $this->correctOptionForQuestion($fixture['question']);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct['id']);
+        $this->forceQuestionRevealElapsed($fixture['question']['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $question1b = (new GameRoundQuestionModel())->where('round_id', $fixture['round']['id'])->where('question_number', 2)->first();
+        $correct1b = $this->correctOptionForQuestion($question1b);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct1b['id']);
+        $this->forceQuestionRevealElapsed($question1b['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $round1 = (new GameRoundModel())->find($fixture['round']['id']);
+        $this->assertSame('ROUND_COMPLETED', $round1['state']);
+
+        $this->forceRoundRevealElapsed($fixture['round']['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $stillRound1 = (new GameRoundModel())->find($fixture['round']['id']);
+        $this->assertSame(
+            'ROUND_COMPLETED',
+            $stillRound1['state'],
+            'Round 1 has a next round configured, so it must still wait for the teacher.'
+        );
+
+        $fixture['engine']->continueRaceRound($fixture['room']['uuid']);
+
+        $round2 = (new GameRoundModel())->where('room_id', $fixture['stored_room']['id'])->where('round_number', 2)->first();
+        $this->assertSame('ROUND_ACTIVE', $round2['state']);
+        $question2 = (new GameRoundQuestionModel())->where('round_id', $round2['id'])->where('state', 'QUESTION_ACTIVE')->first();
+
+        $correct2 = $this->correctOptionForQuestion($question2);
+        $fixture['engine']->raceQuestionAnswer($fixture['room']['uuid'], $fixture['teams'][0]['public_uuid'], (int) $correct2['id']);
+        $this->forceQuestionRevealElapsed($question2['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $round2AfterResolve = (new GameRoundModel())->find($round2['id']);
+        $this->assertSame('ROUND_COMPLETED', $round2AfterResolve['state']);
+
+        // No continueRaceRound() call here — this is the behavior under test.
+        $this->forceRoundRevealElapsed($round2['id']);
+        $fixture['engine']->snapshot($fixture['room']['uuid']);
+
+        $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
+        $this->assertSame('FINISHED', $storedRoom['status']);
+        $closedRound2 = (new GameRoundModel())->find($round2['id']);
+        $this->assertSame('ROUND_CLOSED', $closedRound2['state']);
+    }
+
     public function testAdvanceFinishesWithQuestionLimitRankingWhenAllocationExhaustedWithoutFinisher(): void
     {
         $fixture = $this->startAnswerRace(2);
@@ -888,14 +945,16 @@ final class QuizRaceTeamDeviceTest extends CIUnitTestCase
             'reveal_until_epoch_ms' => 0,
         ]);
 
+        // No round 4 is configured, so once the checkpoint reveal has elapsed
+        // a routine poll should finish the race on its own — the teacher
+        // shouldn't have to click "Lanjut Ronde" just to close out a race
+        // that has no next round to continue into.
         $fixture['engine']->snapshot($fixture['room']['uuid']);
-        $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
-        $this->assertSame('PLAYING', $storedRoom['status']);
-
-        $fixture['engine']->continueRaceRound($fixture['room']['uuid']);
 
         $storedRoom = (new GameRoomModel())->where('public_uuid', $fixture['room']['uuid'])->first();
         $this->assertSame('FINISHED', $storedRoom['status']);
+        $closedRound = (new GameRoundModel())->find($fixture['round']['id']);
+        $this->assertSame('ROUND_CLOSED', $closedRound['state']);
         $finishedEvent = $this->db->table('game_events')->where('room_id', $storedRoom['id'])->where('type', 'game.finished')->get()->getRowArray();
         $payload = json_decode((string) $finishedEvent['payload_json'], true)['payload'];
         $this->assertSame('QUESTION_LIMIT', $payload['finish_reason']);
