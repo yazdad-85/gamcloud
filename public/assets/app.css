@@ -2363,6 +2363,27 @@ textarea {
     border-color: #27364f;
 }
 
+.projector .join-qr {
+    background: rgba(248, 250, 252, .07);
+    border-color: rgba(226, 232, 240, .2);
+    grid-template-columns: 152px minmax(0, 1fr);
+}
+
+.projector .join-qr-code {
+    border-width: 10px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, .32);
+}
+
+.projector .join-qr-copy span,
+.projector .join-qr-copy small {
+    color: #cbd5e1;
+}
+
+.projector .join-qr-copy strong {
+    color: #f8fafc;
+    font-size: clamp(2.8rem, 6vw, 4.6rem);
+}
+
 .board {
     aspect-ratio: 1;
     background:
@@ -3364,6 +3385,68 @@ textarea {
     padding: 12px;
 }
 
+.join-qr {
+    align-items: center;
+    background: rgba(15, 23, 42, .04);
+    border: 1px solid rgba(148, 163, 184, .28);
+    border-radius: 8px;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 116px minmax(0, 1fr);
+    margin: 12px 0;
+    padding: 12px;
+}
+
+.join-qr-code {
+    aspect-ratio: 1;
+    background: #fff;
+    border: 8px solid #fff;
+    border-radius: 6px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, .12);
+    overflow: hidden;
+}
+
+.join-qr-code svg {
+    display: block;
+    height: 100%;
+    width: 100%;
+}
+
+.join-qr-copy {
+    min-width: 0;
+}
+
+.join-qr-copy span,
+.join-qr-copy small {
+    color: var(--muted);
+    display: block;
+}
+
+.join-qr-copy strong {
+    display: block;
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    line-height: 1;
+    margin: 4px 0 6px;
+}
+
+.join-qr-copy small {
+    overflow-wrap: anywhere;
+}
+
+.join-qr-compact {
+    grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.join-qr-fallback {
+    align-items: center;
+    color: var(--muted);
+    display: flex;
+    font-size: .8rem;
+    justify-content: center;
+    padding: 8px;
+    text-align: center;
+}
+
 .hidden {
     display: none !important;
 }
@@ -3398,6 +3481,11 @@ textarea {
 
     .feature-strip {
         grid-template-columns: 1fr;
+    }
+
+    .join-qr,
+    .projector .join-qr {
+        grid-template-columns: 112px minmax(0, 1fr);
     }
 
     .sidebar {

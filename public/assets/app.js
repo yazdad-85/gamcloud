@@ -2427,6 +2427,278 @@
         )).join('') + '</div>';
     }
 
+    function gfTables() {
+        const exp = new Array(512).fill(0);
+        const log = new Array(256).fill(0);
+        let value = 1;
+        for (let i = 0; i < 255; i++) {
+            exp[i] = value;
+            log[value] = i;
+            value <<= 1;
+            if (value & 0x100) {
+                value ^= 0x11d;
+            }
+        }
+        for (let i = 255; i < 512; i++) {
+            exp[i] = exp[i - 255];
+        }
+
+        return {exp, log};
+    }
+
+    const qrGf = gfTables();
+
+    function gfMul(left, right) {
+        if (left === 0 || right === 0) {
+            return 0;
+        }
+
+        return qrGf.exp[qrGf.log[left] + qrGf.log[right]];
+    }
+
+    function qrGeneratorPolynomial(degree) {
+        let poly = [1];
+        for (let i = 0; i < degree; i++) {
+            const next = new Array(poly.length + 1).fill(0);
+            for (let j = 0; j < poly.length; j++) {
+                next[j] ^= poly[j];
+                next[j + 1] ^= gfMul(poly[j], qrGf.exp[i]);
+            }
+            poly = next;
+        }
+
+        return poly;
+    }
+
+    function qrErrorCorrection(data, degree) {
+        const generator = qrGeneratorPolynomial(degree);
+        const result = new Array(degree).fill(0);
+        data.forEach((codeword) => {
+            const factor = codeword ^ result[0];
+            result.shift();
+            result.push(0);
+            for (let i = 0; i < degree; i++) {
+                result[i] ^= gfMul(generator[i + 1], factor);
+            }
+        });
+
+        return result;
+    }
+
+    function appendBits(bits, value, length) {
+        for (let i = length - 1; i >= 0; i--) {
+            bits.push((value >>> i) & 1);
+        }
+    }
+
+    function qrDataCodewords(text) {
+        const bytes = Array.from(new TextEncoder().encode(text));
+        const dataCodewordCount = 108;
+        const capacityBits = dataCodewordCount * 8;
+        if (bytes.length > 106) {
+            throw new Error('URL join terlalu panjang untuk QR bawaan.');
+        }
+
+        const bits = [];
+        appendBits(bits, 0x4, 4);
+        appendBits(bits, bytes.length, 8);
+        bytes.forEach((byte) => appendBits(bits, byte, 8));
+        appendBits(bits, 0, Math.min(4, capacityBits - bits.length));
+        while (bits.length % 8 !== 0) {
+            bits.push(0);
+        }
+
+        const codewords = [];
+        for (let i = 0; i < bits.length; i += 8) {
+            let value = 0;
+            for (let j = 0; j < 8; j++) {
+                value = (value << 1) | bits[i + j];
+            }
+            codewords.push(value);
+        }
+        for (let pad = 0; codewords.length < dataCodewordCount; pad++) {
+            codewords.push(pad % 2 === 0 ? 0xec : 0x11);
+        }
+
+        return codewords;
+    }
+
+    function qrMatrixBase(size) {
+        const matrix = Array.from({length: size}, () => new Array(size).fill(false));
+        const reserved = Array.from({length: size}, () => new Array(size).fill(false));
+        const set = (x, y, dark, reserve = true) => {
+            if (x < 0 || y < 0 || x >= size || y >= size) {
+                return;
+            }
+            matrix[y][x] = dark;
+            if (reserve) {
+                reserved[y][x] = true;
+            }
+        };
+
+        const finder = (left, top) => {
+            for (let y = -1; y <= 7; y++) {
+                for (let x = -1; x <= 7; x++) {
+                    const xx = left + x;
+                    const yy = top + y;
+                    const dark = x >= 0 && x <= 6 && y >= 0 && y <= 6
+                        && (x === 0 || x === 6 || y === 0 || y === 6 || (x >= 2 && x <= 4 && y >= 2 && y <= 4));
+                    set(xx, yy, dark);
+                }
+            }
+        };
+
+        finder(0, 0);
+        finder(size - 7, 0);
+        finder(0, size - 7);
+
+        for (let i = 8; i < size - 8; i++) {
+            set(i, 6, i % 2 === 0);
+            set(6, i, i % 2 === 0);
+        }
+
+        for (let y = size - 9; y <= size - 5; y++) {
+            for (let x = size - 9; x <= size - 5; x++) {
+                const dx = Math.abs(x - (size - 7));
+                const dy = Math.abs(y - (size - 7));
+                set(x, y, Math.max(dx, dy) !== 1);
+            }
+        }
+
+        set(8, (4 * 5) + 9, true);
+        qrFormatCoordinates(size).forEach(([x, y]) => {
+            reserved[y][x] = true;
+        });
+
+        return {matrix, reserved};
+    }
+
+    function qrFormatCoordinates(size) {
+        const coords = [];
+        for (let i = 0; i <= 5; i++) {
+            coords.push([8, i], [i, 8]);
+        }
+        coords.push([8, 7], [8, 8], [7, 8]);
+        for (let i = 9; i <= 14; i++) {
+            coords.push([8, 14 - i], [14 - i, 8]);
+        }
+        for (let i = 0; i <= 7; i++) {
+            coords.push([size - 1 - i, 8]);
+        }
+        for (let i = 8; i <= 14; i++) {
+            coords.push([8, size - 15 + i]);
+        }
+
+        return coords;
+    }
+
+    function qrFormatBits(mask) {
+        const data = (1 << 3) | mask;
+        let value = data << 10;
+        for (let i = 14; i >= 10; i--) {
+            if (((value >>> i) & 1) !== 0) {
+                value ^= 0x537 << (i - 10);
+            }
+        }
+
+        return ((data << 10) | value) ^ 0x5412;
+    }
+
+    function qrMask(mask, x, y) {
+        switch (mask) {
+            case 1:
+                return y % 2 === 0;
+            case 2:
+                return x % 3 === 0;
+            case 3:
+                return (x + y) % 3 === 0;
+            default:
+                return (x + y) % 2 === 0;
+        }
+    }
+
+    function applyQrFormat(matrix, mask) {
+        const size = matrix.length;
+        const bits = qrFormatBits(mask);
+        for (let i = 0; i <= 5; i++) {
+            matrix[i][8] = ((bits >>> i) & 1) !== 0;
+            matrix[8][i] = ((bits >>> i) & 1) !== 0;
+        }
+        matrix[7][8] = ((bits >>> 6) & 1) !== 0;
+        matrix[8][8] = ((bits >>> 7) & 1) !== 0;
+        matrix[8][7] = ((bits >>> 8) & 1) !== 0;
+        for (let i = 9; i <= 14; i++) {
+            matrix[14 - i][8] = ((bits >>> i) & 1) !== 0;
+            matrix[8][14 - i] = ((bits >>> i) & 1) !== 0;
+        }
+        for (let i = 0; i <= 7; i++) {
+            matrix[8][size - 1 - i] = ((bits >>> i) & 1) !== 0;
+        }
+        for (let i = 8; i <= 14; i++) {
+            matrix[size - 15 + i][8] = ((bits >>> i) & 1) !== 0;
+        }
+    }
+
+    function joinQrSvg(text) {
+        const size = 37;
+        const mask = 0;
+        const data = qrDataCodewords(text);
+        const allCodewords = data.concat(qrErrorCorrection(data, 26));
+        const bits = [];
+        allCodewords.forEach((codeword) => appendBits(bits, codeword, 8));
+
+        const {matrix, reserved} = qrMatrixBase(size);
+        let bitIndex = 0;
+        let upward = true;
+        for (let right = size - 1; right >= 1; right -= 2) {
+            if (right === 6) {
+                right--;
+            }
+            for (let row = 0; row < size; row++) {
+                const y = upward ? size - 1 - row : row;
+                for (let col = 0; col < 2; col++) {
+                    const x = right - col;
+                    if (reserved[y][x]) {
+                        continue;
+                    }
+                    const dark = (bits[bitIndex++] || 0) !== 0;
+                    matrix[y][x] = dark !== qrMask(mask, x, y);
+                }
+            }
+            upward = !upward;
+        }
+        applyQrFormat(matrix, mask);
+
+        let path = '';
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                if (matrix[y][x]) {
+                    path += 'M' + x + ' ' + y + 'h1v1h-1z';
+                }
+            }
+        }
+
+        return '<svg viewBox="0 0 ' + size + ' ' + size + '" role="img" aria-hidden="true" focusable="false" shape-rendering="crispEdges">'
+            + '<rect width="' + size + '" height="' + size + '" fill="#fff"/>'
+            + '<path d="' + path + '" fill="#111827"/></svg>';
+    }
+
+    function renderJoinQrCodes() {
+        document.querySelectorAll('[data-join-qr]').forEach((element) => {
+            const value = element.dataset.qrValue || '';
+            if (!value || element.dataset.qrRendered === '1') {
+                return;
+            }
+            try {
+                element.innerHTML = joinQrSvg(value);
+                element.dataset.qrRendered = '1';
+            } catch (error) {
+                element.classList.add('join-qr-fallback');
+                element.textContent = 'QR tidak bisa dibuat';
+            }
+        });
+    }
+
     function questionTypeLabel(type) {
         switch (String(type || '').toUpperCase()) {
             case 'TRUE_FALSE':
@@ -2458,4 +2730,6 @@
         projector,
         controller,
     };
+
+    renderJoinQrCodes();
 })();

@@ -2,6 +2,7 @@
 
 <?= $this->section('content') ?>
 <?php $room = $snapshot['room']; ?>
+<?php $joinUrl = site_url('join/' . $room['pin']); ?>
 <div class="fx-sound-unlock" data-fx-sound-unlock>
     <p>Ketuk untuk mengaktifkan suara efek permainan</p>
     <button type="button" data-fx-sound-unlock-button>🔊 Aktifkan Suara</button>
@@ -25,6 +26,16 @@
             <h1 class="page-title"><?= esc($room['display_title'] ?? $room['title']) ?></h1>
             <p>Mode <strong><?= esc($room['mode_label'] ?? $snapshot['mode_state']['label'] ?? 'Ular Tangga Kuis') ?></strong></p>
             <p>PIN <strong><?= esc($room['pin']) ?></strong></p>
+            <?php if (($room['participation_mode'] ?? 'TEAM_DEVICE') === 'TEAM_DEVICE'): ?>
+                <div class="join-qr projector-join-qr">
+                    <div class="join-qr-code" data-join-qr data-qr-value="<?= esc($joinUrl) ?>" aria-label="QR join <?= esc($room['pin']) ?>"></div>
+                    <div class="join-qr-copy">
+                        <span>Scan untuk join</span>
+                        <strong><?= esc($room['pin']) ?></strong>
+                        <small><?= esc($joinUrl) ?></small>
+                    </div>
+                </div>
+            <?php endif ?>
             <p>Status <strong data-room-status><?= esc($room['status']) ?></strong></p>
             <p>Giliran <strong data-current-team>-</strong></p>
             <div class="countdown-card">

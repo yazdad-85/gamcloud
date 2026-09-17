@@ -2,6 +2,7 @@
 
 <?= $this->section('content') ?>
 <?php $room = $snapshot['room']; ?>
+<?php $joinUrl = site_url('join/' . $room['pin']); ?>
 <div class="topbar">
     <div>
         <h1 class="page-title">Control Game</h1>
@@ -44,6 +45,16 @@
         <p>Mode giliran: <strong><?= esc(($room['turn_order_mode'] ?? 'random') === 'join_order' ? 'Urutan join' : 'Acak otomatis') ?></strong></p>
         <p>Aturan finish: <strong><?= esc(($room['finish_rule'] ?? 'clamp_finish') === 'exact_finish' ? 'Harus pas' : 'Langsung finish') ?></strong></p>
         <p>Bank soal: <strong><?= esc((string) ($snapshot['question_bank']['total'] ?? 0)) ?></strong> soal published</p>
+        <?php if (($room['participation_mode'] ?? 'TEAM_DEVICE') === 'TEAM_DEVICE'): ?>
+            <div class="join-qr join-qr-compact">
+                <div class="join-qr-code" data-join-qr data-qr-value="<?= esc($joinUrl) ?>" aria-label="QR join <?= esc($room['pin']) ?>"></div>
+                <div class="join-qr-copy">
+                    <span>Scan untuk join</span>
+                    <strong><?= esc($room['pin']) ?></strong>
+                    <small><?= esc($joinUrl) ?></small>
+                </div>
+            </div>
+        <?php endif ?>
         <div class="leaderboard" data-leaderboard></div>
     </div>
     <div class="panel">

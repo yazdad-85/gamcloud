@@ -190,6 +190,32 @@ final class TeacherCentralizedModeTest extends CIUnitTestCase
         $engine->joinByPin($room['pin'], 'Tim Nekat Join');
     }
 
+    public function testTeamDeviceRoomPagesRenderJoinQrTargets(): void
+    {
+        $engine = new GameEngine();
+        $room = $engine->createRoom(1, 'QR Join Render Test', [
+            'participation_mode' => 'TEAM_DEVICE',
+        ])['room'];
+        $joinUrl = site_url('join/' . $room['pin']);
+
+        $this->actingAsTeacherOwner(1);
+
+        $detail = $this->get('/teacher/games/' . $room['uuid']);
+        $detail->assertStatus(200);
+        $this->assertStringContainsString('data-join-qr', $detail->getBody());
+        $this->assertStringContainsString('data-qr-value="' . esc($joinUrl) . '"', $detail->getBody());
+
+        $control = $this->get('/teacher/games/' . $room['uuid'] . '/control');
+        $control->assertStatus(200);
+        $this->assertStringContainsString('data-join-qr', $control->getBody());
+        $this->assertStringContainsString('data-qr-value="' . esc($joinUrl) . '"', $control->getBody());
+
+        $projector = $this->get('/game/' . $room['uuid'] . '/projector?t=' . $room['projector_token']);
+        $projector->assertStatus(200);
+        $this->assertStringContainsString('data-join-qr', $projector->getBody());
+        $this->assertStringContainsString('data-qr-value="' . esc($joinUrl) . '"', $projector->getBody());
+    }
+
     public function testRollDefersDeadlineForCentralizedRoom(): void
     {
         $engine = new GameEngine();
