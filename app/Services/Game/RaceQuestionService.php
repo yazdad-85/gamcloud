@@ -165,7 +165,18 @@ final class RaceQuestionService
 
     private function teamKey(int|string $teamId): string
     {
-        return gettype($teamId) . ':' . (string) $teamId;
+        // Key by value only. Team ids always come from the same numeric
+        // database id, but callers read it through different paths: GameEngine
+        // explicitly casts submitted answers' team_id to (int), while team
+        // rows pulled straight from the model keep whatever type the DB driver
+        // hands back — MySQLi returns numeric columns as strings unless
+        // 'numberNative' is enabled (it isn't, in production), while SQLite3
+        // (used locally/in tests) returns native ints. Including gettype() in
+        // the key made "40" (string) and 40 (int) hash differently, so on
+        // production every team's real answer permanently missed this lookup
+        // and silently fell back to the TIMEOUT default below — regardless of
+        // how quickly the team actually answered.
+        return (string) $teamId;
     }
 
     private function isCorrect(array $answer): bool

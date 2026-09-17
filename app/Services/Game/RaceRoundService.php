@@ -101,7 +101,12 @@ final class RaceRoundService
         $prizes = [];
         $seen = [];
         foreach ($winnerTeamIds as $teamId) {
-            $key = gettype($teamId) . ':' . (string) $teamId;
+            // Key by value only, not gettype(). Team ids read straight from a
+            // DB row can be int (SQLite3, used locally/in tests) or string
+            // (MySQLi in production, since 'numberNative' is off) — see the
+            // matching fix and comment in RaceQuestionService::teamKey(),
+            // which is where this exact pattern caused a real production bug.
+            $key = (string) $teamId;
             if (isset($seen[$key])) {
                 continue;
             }

@@ -27,6 +27,48 @@ final class RaceQuestionServiceTest extends CIUnitTestCase
         $this->assertSame([3, 1, 0, 0], array_column($result['movements'], 'steps'));
     }
 
+    public function testMatchesAnswerWhenTeamRowIdIsStringButAnswerTeamIdIsInt(): void
+    {
+        // On MySQLi (production), numeric columns come back as PHP strings
+        // unless 'numberNative' is enabled — it isn't. GameTeamModel doesn't
+        // cast 'id' to int, so $team['id'] here is a string, exactly like a
+        // team row read from the real database. GameEngine, meanwhile,
+        // explicitly casts submitted answers' team_id to (int) before calling
+        // resolveMovements(). Both must resolve to the same team regardless of
+        // this type difference — SQLite3 (used locally/in tests) happens to
+        // return native ints for both sides, which is why this only ever
+        // surfaced in production.
+        $teams = [
+            ['id' => '1', 'position' => 2, 'active_effects_json' => '{}'],
+            ['id' => '2', 'position' => 2, 'active_effects_json' => '{}'],
+        ];
+
+        $result = $this->service()->resolveMovements(
+            $teams,
+            [
+                ['team_id' => 1, 'outcome' => 'CORRECT', 'is_correct' => true, 'response_ms' => 7553],
+                ['team_id' => 2, 'outcome' => 'WRONG', 'is_correct' => false, 'response_ms' => 8614],
+            ],
+            ['max_position' => 24],
+            $this->board()
+        );
+
+        $movementsByTeamId = [];
+        foreach ($result['movements'] as $movement) {
+            $movementsByTeamId[(string) $movement['team_id']] = $movement;
+        }
+
+        // Team 1's sole correct answer also makes it the fastest, so steps
+        // include both the base correct-answer step and the +2 fastest bonus.
+        // The bug under test isn't this scoring math — it's that team 1's
+        // answer used to never be found at all (silently replaced by the
+        // TIMEOUT default), which these outcome/steps values reveal either way.
+        $this->assertSame('CORRECT', $movementsByTeamId['1']['outcome']);
+        $this->assertSame(3, $movementsByTeamId['1']['steps']);
+        $this->assertSame('WRONG', $movementsByTeamId['2']['outcome']);
+        $this->assertSame(0, $movementsByTeamId['2']['steps']);
+    }
+
     public function testExactFastestTiesAllReceiveBonus(): void
     {
         $result = $this->service()->resolveMovements(
